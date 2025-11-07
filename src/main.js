@@ -2,10 +2,10 @@ import {
   createInitialState,
   getLegalMoves,
   makeMove,
-  previewBoard,
   START_FEN,
   isCheckmate,
   evaluateBoard,
+  simulateMove,
 } from './model/chess.js';
 import {
   drawBoard,
@@ -56,6 +56,24 @@ const SCENARIOS = [
     description: 'Fully empty board—place pieces however you like before starting a custom drill.',
     fen: '8/8/8/8/8/8/8/8 w - - 0 1',
   },
+  {
+    id: 'castle-test',
+    name: 'Castle Drill',
+    description: 'Kings and rooks ready on the edges—practice both king- and queen-side castling.',
+    fen: 'r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1',
+  },
+  {
+    id: 'en-passant',
+    name: 'En Passant Trap',
+    description: 'White to move can capture the pawn on d5 via en passant right away.',
+    fen: 'rnbqkbnr/ppp1pppp/8/3pP3/8/8/PPPP1PPP/RNBQKBNR w KQkq d6 0 4',
+  },
+  {
+    id: 'promotion',
+    name: 'Promotion Test',
+    description: 'White pawn on d7 promotes (auto-queens here) when you advance to d8.',
+    fen: '4k3/3P4/8/8/8/8/8/4K3 w - - 0 1',
+  },
 ];
 
 const SETTINGS_KEY = 'tensorchess:ui';
@@ -89,7 +107,8 @@ const drag = {
   pointer: { x: 0, y: 0 },
   hovered: null,
   moveMap: new Map(),
-  previewBoard: null,
+  previewState: null,
+  previewPiece: null,
   snapPoint: null,
 };
 
@@ -213,14 +232,17 @@ function attachPointerEvents() {
 function updatePreviewForIndex(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (!move) {
-    drag.previewBoard = null;
+    drag.previewState = null;
+    drag.previewPiece = null;
     drag.snapPoint = null;
     heatValues = computeHeat(game);
     return;
   }
-  drag.previewBoard = previewBoard(game.board, move);
+  const nextState = simulateMove(game, move);
+  drag.previewState = nextState;
+  drag.previewPiece = move.promotion ? move.piece[0] + move.promotion : move.piece;
   drag.snapPoint = squareCenter(move.to, ui.flipped);
-  heatValues = computeHeat({ ...game, board: drag.previewBoard }, { previewBoard: drag.previewBoard });
+  heatValues = computeHeat(nextState, { previewBoard: nextState.board });
   render();
 }
 
@@ -262,7 +284,8 @@ function endDrag() {
   drag.piece = null;
   drag.hovered = null;
   drag.moveMap = new Map();
-  drag.previewBoard = null;
+  drag.previewState = null;
+  drag.previewPiece = null;
   drag.snapPoint = null;
   ui.selected = null;
   ui.legalTargets = [];
@@ -277,14 +300,11 @@ function releasePointer(pointerId) {
 }
 
 function render() {
-  const usingPreview = drag.active && drag.previewBoard;
-  const boardState = usingPreview ? drag.previewBoard : game.board;
-  const previewState = usingPreview ? { ...game, board: boardState, turn: game.turn === 'w' ? 'b' : 'w' } : null;
+  const previewState = drag.active ? drag.previewState : null;
+  const boardState = previewState ? previewState.board : game.board;
   const vectorState = previewState ?? game;
-  const movableSquares = usingPreview
-    ? collectMovableSquares(vectorState)
-    : ui.movableSquares;
-  const checkmatedColor = usingPreview ? detectCheckmate(vectorState) : ui.checkmatedColor;
+  const movableSquares = previewState ? collectMovableSquares(vectorState) : ui.movableSquares;
+  const checkmatedColor = previewState ? detectCheckmate(vectorState) : ui.checkmatedColor;
   drawBoard(boardCtx, {
     board: boardState,
     flipped: ui.flipped,
@@ -306,7 +326,8 @@ function render() {
   }
   if (drag.active) {
     const ghostPos = drag.snapPoint ?? drag.pointer;
-    drawDragGhost(overlayCtx, drag.piece, ghostPos);
+    const ghostPiece = drag.previewPiece ?? drag.piece;
+    drawDragGhost(overlayCtx, ghostPiece, ghostPos);
   }
 
   updateFitnessDisplay(vectorState);
@@ -394,7 +415,8 @@ function loadScenario(scenario) {
   drag.piece = null;
   drag.hovered = null;
   drag.moveMap = new Map();
-  drag.previewBoard = null;
+  drag.previewState = null;
+  drag.previewPiece = null;
   drag.snapPoint = null;
   ui.selected = null;
   ui.legalTargets = [];

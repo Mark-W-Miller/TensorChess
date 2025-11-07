@@ -51,16 +51,18 @@ const KING_STEPS = [
 ];
 
 export function createInitialState(fen = START_FEN) {
-  const { board, turn } = parseFEN(fen);
+  const { board, turn, castling, enPassant } = parseFEN(fen);
   return {
     board,
     turn,
     lastMove: null,
+    castling,
+    enPassant,
   };
 }
 
 export function parseFEN(fen) {
-  const [placement, active = 'w'] = fen.split(' ');
+  const [placement, active = 'w', castlingField = '-', enPassantField = '-'] = fen.split(' ');
   const rows = placement.split('/');
   const board = new Array(BOARD_SIZE).fill(null);
 
@@ -79,10 +81,17 @@ export function parseFEN(fen) {
     }
   });
 
-  return { board, turn: active };
+  const enPassant = enPassantField && enPassantField !== '-' ? squareToIndex(enPassantField) : null;
+
+  return {
+    board,
+    turn: active,
+    castling: castlingField && castlingField !== '-' ? castlingField : '',
+    enPassant,
+  };
 }
 
-export function boardToFEN(board, turn = 'w') {
+export function boardToFEN(board, turn = 'w', castling = '', enPassant = null) {
   const ranks = [];
   for (let rank = 0; rank < 8; rank++) {
     let empty = 0;
@@ -105,7 +114,9 @@ export function boardToFEN(board, turn = 'w') {
     }
     ranks.push(row);
   }
-  return `${ranks.join('/') } ${turn} - - 0 1`;
+  const castleField = castling && castling.length ? castling : '-';
+  const enPassantField = typeof enPassant === 'number' ? indexToSquare(enPassant) : '-';
+  return `${ranks.join('/') } ${turn} ${castleField} ${enPassantField} 0 1`;
 }
 
 export function getLegalMoves(state, fromIdx) {
@@ -113,25 +124,30 @@ export function getLegalMoves(state, fromIdx) {
   if (!piece || piece[0] !== state.turn) {
     return [];
   }
-  return generatePseudoMoves(state.board, fromIdx).filter((move) => {
+  return generatePseudoMoves(state, fromIdx).filter((move) => {
     const nextBoard = applyMove(state.board, move);
     return !isKingInCheck(nextBoard, state.turn);
   });
 }
 
 export function makeMove(state, move) {
-  const board = applyMove(state.board, move);
-  return {
-    board,
-    turn: state.turn === 'w' ? 'b' : 'w',
-    lastMove: move,
-  };
+  return applyStateMove(state, move);
+}
+
+export function simulateMove(state, move) {
+  return applyStateMove(state, move);
 }
 
 export function applyMove(board, move) {
   const next = board.slice();
   next[move.to] = move.promotion ? move.piece[0] + move.promotion : move.piece;
   next[move.from] = null;
+  if (move.castle) {
+    performCastleRookMove(next, move);
+  }
+  if (move.enPassantCapture && typeof move.removeSquare === 'number') {
+    next[move.removeSquare] = null;
+  }
   return next;
 }
 
@@ -213,17 +229,17 @@ export function getMoveRays(board, idx, piece = board[idx]) {
 
 export function evaluateBoard(state, color = 'w') {
   const opponent = color === 'w' ? 'b' : 'w';
-  const mobility = computeMobility(state.board, color) - computeMobility(state.board, opponent);
+  const mobility = computeMobility(state, color) - computeMobility(state, opponent);
   const threat = computeThreat(state.board, color) - computeThreat(state.board, opponent);
   const material = computeMaterial(state.board, color) - computeMaterial(state.board, opponent);
   return material + mobility - threat;
 }
 
-function computeMobility(board, color) {
+function computeMobility(state, color) {
   let total = 0;
-  board.forEach((piece, idx) => {
+  state.board.forEach((piece, idx) => {
     if (!piece || piece[0] !== color) return;
-    const moves = generatePseudoMoves(board, idx).length;
+    const moves = generatePseudoMoves(state, idx).length;
     total += Math.pow(moves, 1.25);
   });
   return total;
@@ -267,6 +283,22 @@ function computeMaterial(board, color) {
   return total;
 }
 
+function applyStateMove(state, move) {
+  const board = applyMove(state.board, move);
+  const castling = updateCastlingRights(state, move);
+  let enPassant = null;
+  if (move.piece[1] === 'P' && Math.abs(move.to - move.from) === 16) {
+    enPassant = move.from + (move.to - move.from) / 2;
+  }
+  return {
+    board,
+    turn: state.turn === 'w' ? 'b' : 'w',
+    lastMove: move,
+    castling,
+    enPassant,
+  };
+}
+
 export function getKingSquare(board, color) {
   return board.findIndex((piece) => piece === `${color}K`);
 }
@@ -283,22 +315,24 @@ export function squareToIndex(square) {
   return rank * 8 + file;
 }
 
-function generatePseudoMoves(board, fromIdx) {
+function generatePseudoMoves(state, fromIdx) {
+  const { board } = state;
   const piece = board[fromIdx];
   if (!piece) return [];
   const color = piece[0];
   const type = piece[1];
 
-  if (type === 'P') return generatePawnMoves(board, fromIdx, color);
+  if (type === 'P') return generatePawnMoves(state, fromIdx, color);
   if (type === 'N') return generateKnightMoves(board, fromIdx, color);
-  if (type === 'K') return generateKingMoves(board, fromIdx, color);
+  if (type === 'K') return generateKingMoves(state, fromIdx, color);
   if (type === 'B' || type === 'R' || type === 'Q') {
     return generateSlidingMoves(board, fromIdx, color, SLIDERS[type]);
   }
   return [];
 }
 
-function generatePawnMoves(board, fromIdx, color) {
+function generatePawnMoves(state, fromIdx, color) {
+  const { board, enPassant } = state;
   const moves = [];
   const dir = color === 'w' ? -1 : 1;
   const startRank = color === 'w' ? 6 : 1;
@@ -320,6 +354,21 @@ function generatePawnMoves(board, fromIdx, color) {
     const occupant = board[target];
     if (occupant && occupant[0] !== color) {
       moves.push(buildMove(board, fromIdx, target, promotionRank));
+      return;
+    }
+    if (enPassant !== null && target === enPassant) {
+      const capturedIdx = target + (color === 'w' ? 8 : -8);
+      const capturedPiece = board[capturedIdx];
+      if (capturedPiece && capturedPiece[0] !== color && capturedPiece[1] === 'P') {
+        moves.push({
+          from: fromIdx,
+          to: target,
+          piece: board[fromIdx],
+          captured: capturedPiece,
+          enPassantCapture: true,
+          removeSquare: capturedIdx,
+        });
+      }
     }
   });
 
@@ -339,7 +388,8 @@ function generateKnightMoves(board, fromIdx, color) {
   return moves;
 }
 
-function generateKingMoves(board, fromIdx, color) {
+function generateKingMoves(state, fromIdx, color) {
+  const board = state.board;
   const moves = [];
   KING_STEPS.forEach(({ df, dr }) => {
     const target = moveIdx(fromIdx, df, dr);
@@ -349,6 +399,7 @@ function generateKingMoves(board, fromIdx, color) {
       moves.push(buildMove(board, fromIdx, target));
     }
   });
+  moves.push(...generateCastlingMoves(state, fromIdx, color));
   return moves;
 }
 
@@ -457,6 +508,85 @@ function isSquareAttacked(board, square, color) {
     }
   }
   return false;
+}
+
+function performCastleRookMove(board, move) {
+  const color = move.piece[0];
+  if (move.castle === 'K') {
+    const rookFrom = color === 'w' ? 63 : 7;
+    const rookTo = color === 'w' ? 61 : 5;
+    board[rookTo] = board[rookFrom];
+    board[rookFrom] = null;
+  } else if (move.castle === 'Q') {
+    const rookFrom = color === 'w' ? 56 : 0;
+    const rookTo = color === 'w' ? 59 : 3;
+    board[rookTo] = board[rookFrom];
+    board[rookFrom] = null;
+  }
+}
+
+function updateCastlingRights(state, move) {
+  let rights = state.castling || '';
+  if (!rights.length) return '';
+  const color = move.piece[0];
+  const from = move.from;
+  const to = move.to;
+  const remove = (chars) => {
+    chars.forEach((c) => {
+      rights = rights.replace(c, '');
+    });
+  };
+  if (move.piece[1] === 'K') {
+    remove(color === 'w' ? ['K', 'Q'] : ['k', 'q']);
+  }
+  if (move.piece[1] === 'R') {
+    if (from === 63) remove(['K']);
+    if (from === 56) remove(['Q']);
+    if (from === 7) remove(['k']);
+    if (from === 0) remove(['q']);
+  }
+  if (move.captured) {
+    if (to === 63) remove(['K']);
+    if (to === 56) remove(['Q']);
+    if (to === 7) remove(['k']);
+    if (to === 0) remove(['q']);
+  }
+  return rights;
+}
+
+function generateCastlingMoves(state, fromIdx, color) {
+  const rights = state.castling || '';
+  if (!rights.length) return [];
+  const board = state.board;
+  const opponent = color === 'w' ? 'b' : 'w';
+  const moves = [];
+  if (!isKingInCheck(board, color)) {
+    if ((color === 'w' && rights.includes('K')) || (color === 'b' && rights.includes('k'))) {
+      const emptySquares = color === 'w' ? [61, 62] : [5, 6];
+      const pathSquares = color === 'w' ? [61, 62] : [5, 6];
+      if (emptySquares.every((sq) => !board[sq]) && pathSquares.every((sq) => !isSquareAttacked(board, sq, opponent))) {
+        moves.push({
+          from: fromIdx,
+          to: fromIdx + 2,
+          piece: board[fromIdx],
+          castle: 'K',
+        });
+      }
+    }
+    if ((color === 'w' && rights.includes('Q')) || (color === 'b' && rights.includes('q'))) {
+      const emptySquares = color === 'w' ? [59, 58, 57] : [3, 2, 1];
+      const pathSquares = color === 'w' ? [59, 58] : [3, 2];
+      if (emptySquares.every((sq) => !board[sq]) && pathSquares.every((sq) => !isSquareAttacked(board, sq, opponent))) {
+        moves.push({
+          from: fromIdx,
+          to: fromIdx - 2,
+          piece: board[fromIdx],
+          castle: 'Q',
+        });
+      }
+    }
+  }
+  return moves;
 }
 
 function moveIdx(fromIdx, df, dr) {
