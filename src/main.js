@@ -28,9 +28,12 @@ const ui = {
   showVectors: persistedSettings.showVectors ?? false,
   autoFlip: persistedSettings.autoFlip ?? false,
   hoverIdx: null,
+  movableSquares: new Set(),
   selected: null,
   legalTargets: [],
 };
+
+ui.movableSquares = collectMovableSquares(game);
 
 const drag = {
   active: false,
@@ -63,6 +66,7 @@ function attachControls() {
     game = createInitialState();
     ui.selected = null;
     ui.legalTargets = [];
+    ui.movableSquares = collectMovableSquares(game);
     heatValues = computeHeat(game);
     render();
   });
@@ -108,6 +112,7 @@ function attachPointerEvents() {
     drag.moveMap = new Map(moves.map((move) => [move.to, move]));
     ui.selected = idx;
     ui.legalTargets = moves;
+    ui.movableSquares = collectMovableSquares(game);
     updatePreviewForIndex(null);
     render();
   });
@@ -182,7 +187,7 @@ function updateHoverState(idx) {
     return;
   }
   const piece = idx !== null ? game.board[idx] : null;
-  const clickable = piece && piece[0] === game.turn;
+  const clickable = piece && piece[0] === game.turn && ui.movableSquares.has(idx);
   const next = clickable ? idx : null;
   boardCanvas.style.cursor = clickable ? 'pointer' : 'default';
   if (ui.hoverIdx === next) {
@@ -196,6 +201,7 @@ function handleDrop(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (move) {
     game = makeMove(game, move);
+    ui.movableSquares = collectMovableSquares(game);
     if (ui.autoFlip) {
       toggleBoardView(false);
     }
@@ -214,6 +220,7 @@ function endDrag() {
   drag.snapPoint = null;
   ui.selected = null;
   ui.legalTargets = [];
+  ui.movableSquares = collectMovableSquares(game);
   ui.hoverIdx = null;
   render();
 }
@@ -224,8 +231,12 @@ function releasePointer(pointerId) {
 }
 
 function render() {
-  const boardState = drag.active && drag.previewBoard ? drag.previewBoard : game.board;
-  const vectorState = drag.active && drag.previewBoard ? { ...game, board: boardState } : game;
+  const usingPreview = drag.active && drag.previewBoard;
+  const boardState = usingPreview ? drag.previewBoard : game.board;
+  const vectorState = usingPreview ? { ...game, board: boardState, turn: game.turn === 'w' ? 'b' : 'w' } : game;
+  const movableSquares = usingPreview
+    ? collectMovableSquares(vectorState)
+    : ui.movableSquares;
   drawBoard(boardCtx, {
     board: boardState,
     flipped: ui.flipped,
@@ -234,6 +245,7 @@ function render() {
     lastMove: game.lastMove,
     dragFrom: drag.active ? drag.from : null,
     hoverIdx: drag.active ? null : ui.hoverIdx,
+    movableSquares,
   });
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -284,4 +296,15 @@ function toggleBoardView(shouldRender = true) {
   if (shouldRender) {
     render();
   }
+}
+
+function collectMovableSquares(state) {
+  const squares = new Set();
+  state.board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== state.turn) return;
+    if (getLegalMoves(state, idx).length > 0) {
+      squares.add(idx);
+    }
+  });
+  return squares;
 }

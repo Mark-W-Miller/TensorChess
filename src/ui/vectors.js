@@ -5,10 +5,19 @@ const SUPPORT_COLOR = 'rgba(45, 212, 191, 0.9)';
 const THREAT_COLOR = 'rgba(248, 113, 113, 0.95)';
 const TOKEN_RADIUS = SQUARE_SIZE * 0.224;
 const HEAD_LENGTH = 12;
+const PIECE_VALUE = {
+  P: 1,
+  N: 3,
+  B: 3,
+  R: 5,
+  Q: 9,
+  K: 100,
+};
+const BASE_WIDTH = 3;
+const WIDTH_SCALE = 0.7;
 
 export function drawVectors(ctx, state, { flipped }) {
   ctx.save();
-  ctx.lineWidth = 2;
   ctx.lineCap = 'round';
   state.board.forEach((piece, idx) => {
     if (!piece) return;
@@ -17,15 +26,24 @@ export function drawVectors(ctx, state, { flipped }) {
     targets.forEach((targetIdx) => {
       const occupant = state.board[targetIdx];
       if (!occupant) return;
-      const color = occupant[0] === piece[0] ? SUPPORT_COLOR : THREAT_COLOR;
+      const sameColor = occupant[0] === piece[0];
+      if (sameColor && occupant[1] === 'K') {
+        return;
+      }
+      const color = sameColor ? SUPPORT_COLOR : THREAT_COLOR;
       const end = squareCenter(targetIdx, flipped);
-      drawArrow(ctx, start, end, color);
+      let targetValue = PIECE_VALUE[occupant[1]];
+      if (!sameColor && occupant[1] === 'K') {
+        targetValue = Math.min(targetValue, PIECE_VALUE.Q * 2);
+      }
+      const width = BASE_WIDTH + targetValue * WIDTH_SCALE;
+      drawArrow(ctx, start, end, color, width);
     });
   });
   ctx.restore();
 }
 
-function drawArrow(ctx, start, end, strokeStyle) {
+function drawArrow(ctx, start, end, strokeStyle, lineWidth) {
   const dx = end.x - start.x;
   const dy = end.y - start.y;
   const length = Math.hypot(dx, dy);
@@ -42,6 +60,7 @@ function drawArrow(ctx, start, end, strokeStyle) {
 
   ctx.strokeStyle = strokeStyle;
   ctx.beginPath();
+  ctx.lineWidth = lineWidth;
   ctx.moveTo(startX, startY);
   ctx.lineTo(tailX, tailY);
   ctx.stroke();

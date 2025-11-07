@@ -28,6 +28,7 @@ const PIECE_LETTERS = {
 const BASE_RADIUS = SQUARE_SIZE * 0.224;
 const BASE_FONT = SQUARE_SIZE * 0.238;
 const HOVER_SCALE = 1.15;
+const MOVABLE_HIGHLIGHT = 'rgba(59, 130, 246, 0.25)';
 
 export function drawBoard(ctx, {
   board,
@@ -37,9 +38,11 @@ export function drawBoard(ctx, {
   lastMove,
   dragFrom,
   hoverIdx = null,
+  movableSquares = new Set(),
 }) {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
   drawTiles(ctx, flipped);
+  drawMovableSquares(ctx, movableSquares, flipped);
   if (lastMove) {
     highlightSquare(ctx, lastMove.from, flipped, LAST_MOVE_COLOR);
     highlightSquare(ctx, lastMove.to, flipped, LAST_MOVE_COLOR);
@@ -48,7 +51,7 @@ export function drawBoard(ctx, {
     highlightSquare(ctx, selected, flipped, SELECT_COLOR);
   }
   drawLegalTargets(ctx, legalTargets, flipped);
-  drawPieces(ctx, board, flipped, dragFrom, hoverIdx);
+  drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares);
 }
 
 function drawTiles(ctx, flipped) {
@@ -84,7 +87,15 @@ function drawLegalTargets(ctx, targets, flipped) {
   });
 }
 
-function drawPieces(ctx, board, flipped, dragFrom, hoverIdx) {
+function drawMovableSquares(ctx, squares, flipped) {
+  squares.forEach((idx) => {
+    const { x, y } = squarePosition(idx, flipped);
+    ctx.fillStyle = MOVABLE_HIGHLIGHT;
+    ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
+  });
+}
+
+function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares) {
   board.forEach((piece, idx) => {
     if (!piece) return;
     if (dragFrom === idx) return; // Drawn as ghost while dragging
