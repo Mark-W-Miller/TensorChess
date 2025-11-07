@@ -1,20 +1,21 @@
-# Introduction 
-TODO: Give a short introduction of your project. Let this section explain the objectives or the motivation behind this project. 
+# TensorChess
 
-# Getting Started
-TODO: Guide users through getting your code up and running on their own system. In this section you can talk about:
-1.	Installation process
-2.	Software dependencies
-3.	Latest releases
-4.	API references
-xxx
-# Build and Test
-TODO: Describe and show how to build your code and run the tests. 
+TensorChess is a tiny vanilla‑Vite playground that renders a draggable chessboard and overlays a live “king safety” heatmap. While you drag a piece, legal targets are highlighted and the heatmap previews how exposed the moving side’s king would be if you dropped on the hovered square. Basic moves (including promotions) are supported; castling and en passant are intentionally omitted to keep the code lean.
 
-# Contribute
-TODO: Explain how other users and developers can contribute to make your code better. 
+## Quick start
 
-If you want to learn more about creating good readme files then refer the following [guidelines](https://docs.microsoft.com/en-us/azure/devops/repos/git/create-a-readme?view=azure-devops). You can also seek inspiration from the below readme files:
-- [ASP.NET Core](https://github.com/aspnet/Home)
-- [Visual Studio Code](https://github.com/Microsoft/vscode)
-- [Chakra Core](https://github.com/Microsoft/ChakraCore)
+```bash
+npm install
+npm run dev
+```
+
+Open the printed local URL to interact with the board. Use **Reset** to return to the starting position, **Flip Board** to view from the other side, and the two checkboxes to toggle the heatmap and the simple piece vectors.
+
+## Build & preview
+
+```bash
+npm run build
+npm run preview
+```
+
+`npm run build` produces a static bundle in `dist/`, and `npm run preview` serves that output locally so you can verify the production assets.
