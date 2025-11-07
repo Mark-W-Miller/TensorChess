@@ -175,13 +175,13 @@ export function isCheckmate(state) {
   return !hasEscape;
 }
 
-export function getMoveRays(board, idx) {
-  const piece = board[idx];
+export function getMoveRays(board, idx, piece = board[idx]) {
   if (!piece) return [];
   const type = piece[1];
   if (type === 'N' || type === 'K' || type === 'P') {
     return [];
   }
+  const color = piece[0];
   const directions =
     type === 'B'
       ? SLIDERS.B
@@ -195,14 +195,76 @@ export function getMoveRays(board, idx) {
     while (true) {
       cursor = moveIdx(cursor, df, dr);
       if (cursor === -1) break;
+      const occupant = board[cursor];
+      if (occupant) {
+        if (occupant[0] !== color) {
+          length += 1;
+        }
+        break;
+      }
       length += 1;
-      if (board[cursor]) break;
     }
     if (length > 0) {
       rays.push({ df, dr, length });
     }
   });
   return rays;
+}
+
+export function evaluateBoard(state, color = 'w') {
+  const opponent = color === 'w' ? 'b' : 'w';
+  const mobility = computeMobility(state.board, color) - computeMobility(state.board, opponent);
+  const threat = computeThreat(state.board, color) - computeThreat(state.board, opponent);
+  const material = computeMaterial(state.board, color) - computeMaterial(state.board, opponent);
+  return material + mobility - threat;
+}
+
+function computeMobility(board, color) {
+  let total = 0;
+  board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== color) return;
+    const moves = generatePseudoMoves(board, idx).length;
+    total += Math.pow(moves, 1.25);
+  });
+  return total;
+}
+
+const PIECE_VALUE = {
+  P: 1,
+  N: 3,
+  B: 3,
+  R: 5,
+  Q: 9,
+  K: 100,
+};
+
+function computeThreat(board, color) {
+  const opponent = color === 'w' ? 'b' : 'w';
+  const opponentAttacks = getAttackMap(board, opponent);
+  let total = 0;
+  board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== color) return;
+    if (opponentAttacks[idx] > 0) {
+      const type = piece[1];
+      let penalty = PIECE_VALUE[type];
+      if (type === 'Q') {
+        penalty *= 3;
+      } else if (type === 'K') {
+        penalty *= 5;
+      }
+      total += penalty;
+    }
+  });
+  return total;
+}
+
+function computeMaterial(board, color) {
+  let total = 0;
+  board.forEach((piece) => {
+    if (!piece || piece[0] !== color) return;
+    total += PIECE_VALUE[piece[1]];
+  });
+  return total;
 }
 
 export function getKingSquare(board, color) {

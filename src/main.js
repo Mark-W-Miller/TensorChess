@@ -5,6 +5,7 @@ import {
   previewBoard,
   START_FEN,
   isCheckmate,
+  evaluateBoard,
 } from './model/chess.js';
 import {
   drawBoard,
@@ -21,6 +22,8 @@ const boardCtx = boardCanvas.getContext('2d');
 const overlayCtx = overlayCanvas.getContext('2d');
 const scenarioListEl = document.getElementById('scenario-list');
 const scenarioInfoEl = document.getElementById('scenario-info');
+const fitnessEl = document.getElementById('fitness-value');
+const fitnessEquationEl = document.getElementById('fitness-equation');
 
 const SCENARIOS = [
   {
@@ -30,10 +33,28 @@ const SCENARIOS = [
     fen: START_FEN,
   },
   {
+    id: 'classic',
+    name: 'Fresh Start',
+    description: 'Traditional initial chess position, ready for a brand-new game.',
+    fen: 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1',
+  },
+  {
     id: 'queen-h4',
     name: 'Latvian Alarm',
     description: 'White to move: only g3 (or Qf3) stops ...Qxf2# on the next turn.',
     fen: 'r3k2r/pppppppp/8/2b5/7q/8/PPPPPPPP/R1BQ1BKR w - - 0 1',
+  },
+  {
+    id: 'setup',
+    name: 'Open Launchpad',
+    description: 'Half-empty training board to explore tactics freely.',
+    fen: '4k3/8/3p4/8/4N3/8/3P4/4K3 w - - 0 1',
+  },
+  {
+    id: 'pregame',
+    name: 'Pregame Focus',
+    description: 'Fully empty board—place pieces however you like before starting a custom drill.',
+    fen: '8/8/8/8/8/8/8/8 w - - 0 1',
   },
 ];
 
@@ -287,6 +308,8 @@ function render() {
     const ghostPos = drag.snapPoint ?? drag.pointer;
     drawDragGhost(overlayCtx, drag.piece, ghostPos);
   }
+
+  updateFitnessDisplay(vectorState);
 }
 
 function loadSettings() {
@@ -408,4 +431,11 @@ function saveScenarioSelection() {
   } catch (err) {
     // ignore storage issues
   }
+}
+
+function updateFitnessDisplay(state) {
+  if (!fitnessEl || !fitnessEquationEl || !state) return;
+  const score = evaluateBoard(state, 'w');
+  fitnessEl.textContent = `Board Fitness: ${score.toFixed(2)}`;
+  fitnessEquationEl.textContent = 'Fitness = (Material + Mobility - Threat)_White - (Material + Mobility - Threat)_Black';
 }

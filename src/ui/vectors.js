@@ -85,7 +85,7 @@ function drawFreedomRays(ctx, board, piece, idx, flipped) {
     drawKingFreedom(ctx, board, piece, idx, flipped);
     return;
   }
-  const rays = getMoveRays(board, idx);
+  const rays = getMoveRays(board, idx, piece);
   const start = squareCenter(idx, flipped);
   rays.forEach(({ df, dr, length }) => {
     const dirX = flipped ? -df : df;
