@@ -1,6 +1,7 @@
 const BOARD_SIZE = 64;
 const FILES = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
-const START_FEN = 'rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w - - 0 1';
+// Italian Game (Giuoco Pianissimo) after 6...O-O, white to move.
+const START_FEN = 'r1bq1rk1/ppp11ppp/2np1n2/2b1p3/2B1P3/2PP1N2/PP3PPP/RNBQ1RK1 w - - 2 7';
 
 const SLIDERS = {
   B: [
@@ -148,6 +149,12 @@ export function getAttackMap(board, color) {
     });
   });
   return attack;
+}
+
+export function getPieceAttacks(board, idx) {
+  const piece = board[idx];
+  if (!piece) return [];
+  return getAttacks(board, idx, piece);
 }
 
 export function getKingSquare(board, color) {

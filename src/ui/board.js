@@ -12,26 +12,32 @@ const PIECE_FILL = {
   b: '#020617',
 };
 const PIECE_STROKE = {
-  w: '#0f172a',
-  b: '#f1f5f9',
+  w: '#3b82f6', // blue outline for white pieces
+  b: '#ef4444', // red outline for black pieces
 };
 
-const GLYPHS = {
-  wP: '♙',
-  wR: '♖',
-  wN: '♘',
-  wB: '♗',
-  wQ: '♕',
-  wK: '♔',
-  bP: '♟',
-  bR: '♜',
-  bN: '♞',
-  bB: '♝',
-  bQ: '♛',
-  bK: '♚',
+const PIECE_LETTERS = {
+  P: 'P',
+  R: 'R',
+  N: 'N',
+  B: 'B',
+  Q: 'Q',
+  K: 'K',
 };
 
-export function drawBoard(ctx, { board, flipped, selected, legalTargets = [], lastMove, dragFrom }) {
+const BASE_RADIUS = SQUARE_SIZE * 0.224;
+const BASE_FONT = SQUARE_SIZE * 0.238;
+const HOVER_SCALE = 1.15;
+
+export function drawBoard(ctx, {
+  board,
+  flipped,
+  selected,
+  legalTargets = [],
+  lastMove,
+  dragFrom,
+  hoverIdx = null,
+}) {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
   drawTiles(ctx, flipped);
   if (lastMove) {
@@ -42,7 +48,7 @@ export function drawBoard(ctx, { board, flipped, selected, legalTargets = [], la
     highlightSquare(ctx, selected, flipped, SELECT_COLOR);
   }
   drawLegalTargets(ctx, legalTargets, flipped);
-  drawPieces(ctx, board, flipped, dragFrom);
+  drawPieces(ctx, board, flipped, dragFrom, hoverIdx);
 }
 
 function drawTiles(ctx, flipped) {
@@ -78,27 +84,18 @@ function drawLegalTargets(ctx, targets, flipped) {
   });
 }
 
-function drawPieces(ctx, board, flipped, dragFrom) {
+function drawPieces(ctx, board, flipped, dragFrom, hoverIdx) {
   board.forEach((piece, idx) => {
     if (!piece) return;
     if (dragFrom === idx) return; // Drawn as ghost while dragging
     const { x, y } = squarePosition(idx, flipped);
-    renderGlyph(ctx, piece, x + SQUARE_SIZE / 2, y + SQUARE_SIZE / 2);
+    const scale = hoverIdx === idx ? HOVER_SCALE : 1;
+    renderGlyph(ctx, piece, x + SQUARE_SIZE / 2, y + SQUARE_SIZE / 2, scale);
   });
 }
 
-function renderGlyph(ctx, piece, x, y) {
-  const color = piece[0];
-  ctx.save();
-  ctx.font = `${SQUARE_SIZE * 0.75}px 'Segoe UI Symbol', 'Apple Color Emoji', serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = PIECE_FILL[color];
-  ctx.strokeStyle = PIECE_STROKE[color];
-  ctx.lineWidth = 3;
-  ctx.strokeText(GLYPHS[piece], x, y);
-  ctx.fillText(GLYPHS[piece], x, y);
-  ctx.restore();
+function renderGlyph(ctx, piece, x, y, scale = 1) {
+  drawPieceToken(ctx, piece, x, y, scale);
 }
 
 export function coordsToIndex(x, y, flipped) {
@@ -134,18 +131,33 @@ export function squareCenter(idx, flipped) {
 export function drawDragGhost(ctx, piece, pointer) {
   if (!piece) return;
   ctx.save();
-  ctx.font = `${SQUARE_SIZE * 0.75}px 'Segoe UI Symbol', serif`;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  ctx.fillStyle = PIECE_FILL[piece[0]];
-  ctx.strokeStyle = PIECE_STROKE[piece[0]];
-  ctx.lineWidth = 3;
   ctx.globalAlpha = 0.92;
-  ctx.strokeText(GLYPHS[piece], pointer.x, pointer.y);
-  ctx.fillText(GLYPHS[piece], pointer.x, pointer.y);
+  drawPieceToken(ctx, piece, pointer.x, pointer.y, HOVER_SCALE);
   ctx.restore();
 }
 
 export function glyphFor(piece) {
-  return GLYPHS[piece];
+  return PIECE_LETTERS[piece[1]];
+}
+
+function drawPieceToken(ctx, piece, x, y, scale = 1) {
+  const color = piece[0];
+  const letter = PIECE_LETTERS[piece[1]];
+  const radius = BASE_RADIUS * scale;
+
+  ctx.save();
+  ctx.fillStyle = PIECE_FILL[color];
+  ctx.strokeStyle = PIECE_STROKE[color];
+  ctx.lineWidth = 6 * scale;
+  ctx.beginPath();
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.stroke();
+
+  ctx.fillStyle = color === 'w' ? '#0f172a' : '#f8fafc';
+  ctx.font = `700 ${BASE_FONT * scale}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.fillText(letter, x, y + 1);
+  ctx.restore();
 }
