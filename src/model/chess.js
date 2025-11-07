@@ -157,6 +157,36 @@ export function getPieceAttacks(board, idx) {
   return getAttacks(board, idx, piece);
 }
 
+export function getMoveRays(board, idx) {
+  const piece = board[idx];
+  if (!piece) return [];
+  const type = piece[1];
+  if (type === 'N' || type === 'K' || type === 'P') {
+    return [];
+  }
+  const directions =
+    type === 'B'
+      ? SLIDERS.B
+      : type === 'R'
+        ? SLIDERS.R
+        : SLIDERS.Q;
+  const rays = [];
+  directions.forEach(({ df, dr }) => {
+    let cursor = idx;
+    let length = 0;
+    while (true) {
+      cursor = moveIdx(cursor, df, dr);
+      if (cursor === -1) break;
+      length += 1;
+      if (board[cursor]) break;
+    }
+    if (length > 0) {
+      rays.push({ df, dr, length });
+    }
+  });
+  return rays;
+}
+
 export function getKingSquare(board, color) {
   return board.findIndex((piece) => piece === `${color}K`);
 }

@@ -1,4 +1,4 @@
-export const BOARD_SIZE = 640;
+export const BOARD_SIZE = 800;
 export const SQUARE_SIZE = BOARD_SIZE / 8;
 
 const LIGHT = '#ccd6f6';
@@ -90,8 +90,17 @@ function drawLegalTargets(ctx, targets, flipped) {
 function drawMovableSquares(ctx, squares, flipped) {
   squares.forEach((idx) => {
     const { x, y } = squarePosition(idx, flipped);
-    ctx.fillStyle = MOVABLE_HIGHLIGHT;
-    ctx.fillRect(x, y, SQUARE_SIZE, SQUARE_SIZE);
+    const centerX = x + SQUARE_SIZE / 2;
+    const centerY = y + SQUARE_SIZE / 2;
+    const radius = SQUARE_SIZE * 0.5;
+    const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.12, centerX, centerY, radius);
+    gradient.addColorStop(0, 'rgba(96, 165, 250, 0.95)');
+    gradient.addColorStop(0.45, 'rgba(37, 99, 235, 0.55)');
+    gradient.addColorStop(1, 'rgba(17, 24, 39, 0.2)');
+    ctx.fillStyle = gradient;
+    ctx.beginPath();
+    ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
+    ctx.fill();
   });
 }
 
