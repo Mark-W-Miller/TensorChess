@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open the printed local URL to interact with the board. Use **Reset** to return to the starting position, enable **Auto Flip Board** if you want the view to swap after each move (double-click the board anytime for a manual swap), toggle the heatmap, and switch on **Show Vectors** to reveal arrows for every direct support (teal), threat (red), and the pale blue agility spokes that encode each piece’s available movement directions.
+Open the printed local URL to interact with the board. Use **Reset** to reload whichever scenario is selected, enable **Auto Flip Board** if you want the view to swap after each move (double-click the board anytime for a manual swap), toggle the heatmap, and switch on **Show Vectors** to reveal arrows for every direct support (teal), threat (red), and the amber agility spokes that encode each piece’s available movement directions. A panel beside the board lets you swap between the base Italian setup and traps such as the Latvian Alarm, where only a precise defensive move prevents …Qxf2#.
 
 ## Build & preview
 

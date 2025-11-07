@@ -176,11 +176,13 @@ function drawPawnFreedom(ctx, board, piece, idx, flipped) {
 
 function drawKingFreedom(ctx, board, piece, idx, flipped) {
   const start = squareCenter(idx, flipped);
+  const opponent = piece[0] === 'w' ? 'b' : 'w';
   KING_STEPS.forEach(({ df, dr }) => {
     const target = moveIdx(idx, df, dr);
     if (target === -1) return;
     const occupant = board[target];
     if (occupant && occupant[0] === piece[0]) return;
+    if (isSquareAttacked(board, opponent, target)) return;
     const dirX = flipped ? -df : df;
     const dirY = flipped ? -dr : dr;
     drawFreedomArrowSegment(ctx, start, dirX, dirY, FREEDOM_SCALE);
@@ -226,6 +228,18 @@ function pawnProgress(piece, idx) {
     return Math.max(0, 6 - rank);
   }
   return Math.max(0, rank - 1);
+}
+
+function isSquareAttacked(board, attackerColor, squareIdx) {
+  for (let i = 0; i < board.length; i += 1) {
+    const piece = board[i];
+    if (!piece || piece[0] !== attackerColor) continue;
+    const attacks = getPieceAttacks(board, i);
+    if (attacks.includes(squareIdx)) {
+      return true;
+    }
+  }
+  return false;
 }
 
 function drawArrow(ctx, start, end, strokeStyle, lineWidth) {

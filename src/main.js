@@ -3,6 +3,8 @@ import {
   getLegalMoves,
   makeMove,
   previewBoard,
+  START_FEN,
+  isCheckmate,
 } from './model/chess.js';
 import {
   drawBoard,
@@ -17,11 +19,32 @@ const boardCanvas = document.getElementById('board');
 const overlayCanvas = document.getElementById('overlay');
 const boardCtx = boardCanvas.getContext('2d');
 const overlayCtx = overlayCanvas.getContext('2d');
+const scenarioListEl = document.getElementById('scenario-list');
+const scenarioInfoEl = document.getElementById('scenario-info');
+
+const SCENARIOS = [
+  {
+    id: 'italian',
+    name: 'Italian Game',
+    description: 'Standard Italian Game shell used throughout the project.',
+    fen: START_FEN,
+  },
+  {
+    id: 'queen-h4',
+    name: 'Latvian Alarm',
+    description: 'White to move: only g3 (or Qf3) stops ...Qxf2# on the next turn.',
+    fen: 'r3k2r/pppppppp/8/2b5/7q/8/PPPPPPPP/R1BQ1BKR w - - 0 1',
+  },
+];
 
 const SETTINGS_KEY = 'tensorchess:ui';
+const GAME_KEY = 'tensorchess:last-game';
 const persistedSettings = loadSettings();
+const savedScenario = loadSavedScenario();
 
-let game = createInitialState();
+let currentScenario =
+  (savedScenario && SCENARIOS.find((s) => s.id === savedScenario)) ?? SCENARIOS[0];
+let game = createInitialState(currentScenario.fen);
 const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
@@ -31,9 +54,12 @@ const ui = {
   movableSquares: new Set(),
   selected: null,
   legalTargets: [],
+  checkmatedColor: null,
 };
 
 ui.movableSquares = collectMovableSquares(game);
+ui.checkmatedColor = detectCheckmate(game);
+saveScenarioSelection();
 
 const drag = {
   active: false,
@@ -49,6 +75,7 @@ const drag = {
 let heatValues = computeHeat(game);
 
 attachControls();
+renderScenarioList();
 attachPointerEvents();
 render();
 
@@ -63,12 +90,7 @@ function attachControls() {
   vectorToggle.checked = ui.showVectors;
 
   resetBtn.addEventListener('click', () => {
-    game = createInitialState();
-    ui.selected = null;
-    ui.legalTargets = [];
-    ui.movableSquares = collectMovableSquares(game);
-    heatValues = computeHeat(game);
-    render();
+    loadScenario(currentScenario);
   });
 
   flipToggle.addEventListener('change', (e) => {
@@ -202,9 +224,12 @@ function handleDrop(idx) {
   if (move) {
     game = makeMove(game, move);
     ui.movableSquares = collectMovableSquares(game);
+    ui.checkmatedColor = detectCheckmate(game);
     if (ui.autoFlip) {
       toggleBoardView(false);
     }
+  } else {
+    ui.checkmatedColor = detectCheckmate(game);
   }
   heatValues = computeHeat(game);
   endDrag();
@@ -233,10 +258,12 @@ function releasePointer(pointerId) {
 function render() {
   const usingPreview = drag.active && drag.previewBoard;
   const boardState = usingPreview ? drag.previewBoard : game.board;
-  const vectorState = usingPreview ? { ...game, board: boardState, turn: game.turn === 'w' ? 'b' : 'w' } : game;
+  const previewState = usingPreview ? { ...game, board: boardState, turn: game.turn === 'w' ? 'b' : 'w' } : null;
+  const vectorState = previewState ?? game;
   const movableSquares = usingPreview
     ? collectMovableSquares(vectorState)
     : ui.movableSquares;
+  const checkmatedColor = usingPreview ? detectCheckmate(vectorState) : ui.checkmatedColor;
   drawBoard(boardCtx, {
     board: boardState,
     flipped: ui.flipped,
@@ -246,6 +273,7 @@ function render() {
     dragFrom: drag.active ? drag.from : null,
     hoverIdx: drag.active ? null : ui.hoverIdx,
     movableSquares,
+    checkmatedColor,
   });
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -307,4 +335,77 @@ function collectMovableSquares(state) {
     }
   });
   return squares;
+}
+
+function renderScenarioList() {
+  if (!scenarioListEl) return;
+  scenarioListEl.innerHTML = '';
+  SCENARIOS.forEach((scenario) => {
+    const btn = document.createElement('button');
+    btn.className = 'scenario-btn';
+    if (scenario.id === currentScenario.id) {
+      btn.classList.add('active');
+    }
+    btn.textContent = scenario.name;
+    btn.addEventListener('click', () => {
+      if (scenario.id !== currentScenario.id) {
+        loadScenario(scenario);
+      }
+    });
+    scenarioListEl.appendChild(btn);
+  });
+  updateScenarioInfo();
+}
+
+function updateScenarioInfo() {
+  if (!scenarioInfoEl) return;
+  scenarioInfoEl.textContent = currentScenario.description;
+}
+
+function loadScenario(scenario) {
+  currentScenario = scenario;
+  game = createInitialState(scenario.fen);
+  heatValues = computeHeat(game);
+  drag.active = false;
+  drag.from = null;
+  drag.piece = null;
+  drag.hovered = null;
+  drag.moveMap = new Map();
+  drag.previewBoard = null;
+  drag.snapPoint = null;
+  ui.selected = null;
+  ui.legalTargets = [];
+  ui.hoverIdx = null;
+  ui.movableSquares = collectMovableSquares(game);
+  ui.checkmatedColor = detectCheckmate(game);
+  renderScenarioList();
+  saveScenarioSelection();
+  render();
+}
+
+function detectCheckmate(state) {
+  if (!state) return null;
+  return isCheckmate(state) ? state.turn : null;
+}
+
+function loadSavedScenario() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return null;
+  }
+  try {
+    return window.localStorage.getItem(GAME_KEY);
+  } catch (err) {
+    return null;
+  }
+}
+
+function saveScenarioSelection() {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return;
+  }
+  try {
+    window.localStorage.setItem(GAME_KEY, currentScenario.id);
+  } catch (err) {
+    // ignore storage issues
+  }
 }

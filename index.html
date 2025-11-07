@@ -20,11 +20,16 @@
       }
 
       .app {
-        width: 760px;
+        width: 1100px;
         display: flex;
         flex-direction: column;
-        gap: 1rem;
-        align-items: center;
+        gap: 1.25rem;
+      }
+
+      .workspace {
+        display: flex;
+        gap: 1.25rem;
+        align-items: flex-start;
       }
 
       canvas {
@@ -77,6 +82,61 @@
       #overlay {
         pointer-events: none;
       }
+
+      .scenario-panel {
+        flex: 0 0 240px;
+        background: rgba(15, 23, 42, 0.5);
+        border: 1px solid rgba(148, 163, 184, 0.2);
+        padding: 1rem;
+        border-radius: 16px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
+      }
+
+      .scenario-panel h2 {
+        margin: 0;
+        font-size: 1.1rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        color: #bfdbfe;
+      }
+
+      #scenario-list {
+        display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+      }
+
+      .scenario-btn {
+        width: 100%;
+        text-align: left;
+        padding: 0.6rem 0.75rem;
+        border-radius: 12px;
+        background: rgba(59, 130, 246, 0.1);
+        border: 1px solid transparent;
+        cursor: pointer;
+        color: inherit;
+        font-size: 0.95rem;
+        transition: background 0.2s, border 0.2s;
+      }
+
+      .scenario-btn:hover {
+        border-color: rgba(59, 130, 246, 0.5);
+      }
+
+      .scenario-btn.active {
+        border-color: rgba(59, 130, 246, 0.9);
+        background: rgba(59, 130, 246, 0.2);
+      }
+
+      #scenario-info {
+        font-size: 0.85rem;
+        line-height: 1.4;
+        color: #cbd5f5;
+        min-height: 3.5rem;
+      }
     </style>
   </head>
   <body>
@@ -87,9 +147,16 @@
         <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
         <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
       </div>
-      <div id="board-wrap">
-        <canvas id="board" width="800" height="800"></canvas>
-        <canvas id="overlay" width="800" height="800"></canvas>
+      <div class="workspace">
+        <div id="board-wrap">
+          <canvas id="board" width="800" height="800"></canvas>
+          <canvas id="overlay" width="800" height="800"></canvas>
+        </div>
+        <aside class="scenario-panel">
+          <h2>Scenarios</h2>
+          <div id="scenario-list"></div>
+          <div id="scenario-info"></div>
+        </aside>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

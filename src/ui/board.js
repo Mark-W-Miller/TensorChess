@@ -29,6 +29,7 @@ const BASE_RADIUS = SQUARE_SIZE * 0.224;
 const BASE_FONT = SQUARE_SIZE * 0.238;
 const HOVER_SCALE = 1.15;
 const MOVABLE_HIGHLIGHT = 'rgba(59, 130, 246, 0.25)';
+const FILE_LABELS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 
 export function drawBoard(ctx, {
   board,
@@ -39,6 +40,7 @@ export function drawBoard(ctx, {
   dragFrom,
   hoverIdx = null,
   movableSquares = new Set(),
+  checkmatedColor = null,
 }) {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
   drawTiles(ctx, flipped);
@@ -51,7 +53,8 @@ export function drawBoard(ctx, {
     highlightSquare(ctx, selected, flipped, SELECT_COLOR);
   }
   drawLegalTargets(ctx, legalTargets, flipped);
-  drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares);
+  drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor);
+  drawCoordinates(ctx, flipped);
 }
 
 function drawTiles(ctx, flipped) {
@@ -94,9 +97,18 @@ function drawMovableSquares(ctx, squares, flipped) {
     const centerY = y + SQUARE_SIZE / 2;
     const radius = SQUARE_SIZE * 0.5;
     const gradient = ctx.createRadialGradient(centerX, centerY, radius * 0.12, centerX, centerY, radius);
-    gradient.addColorStop(0, 'rgba(96, 165, 250, 0.95)');
-    gradient.addColorStop(0.45, 'rgba(37, 99, 235, 0.55)');
-    gradient.addColorStop(1, 'rgba(17, 24, 39, 0.2)');
+    const file = idx % 8;
+    const rank = Math.floor(idx / 8);
+    const isDarkSquare = (file + rank) % 2 === 1;
+    if (isDarkSquare) {
+      gradient.addColorStop(0, 'rgba(191, 219, 254, 0.95)');
+      gradient.addColorStop(0.45, 'rgba(125, 211, 252, 0.65)');
+      gradient.addColorStop(1, 'rgba(59, 130, 246, 0.35)');
+    } else {
+      gradient.addColorStop(0, 'rgba(96, 165, 250, 0.95)');
+      gradient.addColorStop(0.45, 'rgba(37, 99, 235, 0.55)');
+      gradient.addColorStop(1, 'rgba(17, 24, 39, 0.2)');
+    }
     ctx.fillStyle = gradient;
     ctx.beginPath();
     ctx.arc(centerX, centerY, radius, 0, Math.PI * 2);
@@ -104,13 +116,19 @@ function drawMovableSquares(ctx, squares, flipped) {
   });
 }
 
-function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares) {
+function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor) {
   board.forEach((piece, idx) => {
     if (!piece) return;
     if (dragFrom === idx) return; // Drawn as ghost while dragging
     const { x, y } = squarePosition(idx, flipped);
     const scale = hoverIdx === idx ? HOVER_SCALE : 1;
-    renderGlyph(ctx, piece, x + SQUARE_SIZE / 2, y + SQUARE_SIZE / 2, scale);
+    const centerX = x + SQUARE_SIZE / 2;
+    const centerY = y + SQUARE_SIZE / 2;
+    if (checkmatedColor && piece === `${checkmatedColor}K`) {
+      drawMatedKing(ctx, centerX, centerY);
+      return;
+    }
+    renderGlyph(ctx, piece, centerX, centerY, scale);
   });
 }
 
@@ -179,5 +197,48 @@ function drawPieceToken(ctx, piece, x, y, scale = 1) {
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
   ctx.fillText(letter, x, y + 1);
+  ctx.restore();
+}
+
+function drawMatedKing(ctx, x, y) {
+  ctx.save();
+  ctx.fillStyle = '#0f172a';
+  ctx.beginPath();
+  ctx.arc(x, y, BASE_RADIUS * 1.1, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.lineWidth = 4;
+  ctx.strokeStyle = '#000';
+  ctx.stroke();
+  ctx.restore();
+}
+
+function drawCoordinates(ctx, flipped) {
+  ctx.save();
+  ctx.font = `${SQUARE_SIZE * 0.12}px 'Inter', 'Segoe UI', sans-serif`;
+  ctx.fillStyle = 'rgba(15, 23, 42, 0.85)';
+  ctx.strokeStyle = 'rgba(241, 245, 249, 0.6)';
+  ctx.lineWidth = 2;
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+
+  for (let screenFile = 0; screenFile < 8; screenFile++) {
+    const boardFile = flipped ? 7 - screenFile : screenFile;
+    const label = FILE_LABELS[boardFile];
+    const x = screenFile * SQUARE_SIZE + SQUARE_SIZE / 2;
+    const y = BOARD_SIZE - SQUARE_SIZE * 0.15;
+    ctx.strokeText(label, x, y);
+    ctx.fillText(label, x, y);
+  }
+
+  ctx.textAlign = 'left';
+  for (let screenRank = 0; screenRank < 8; screenRank++) {
+    const boardRank = flipped ? 7 - screenRank : screenRank;
+    const label = String(8 - boardRank);
+    const x = SQUARE_SIZE * 0.08;
+    const y = screenRank * SQUARE_SIZE + SQUARE_SIZE * 0.15;
+    ctx.strokeText(label, x, y);
+    ctx.fillText(label, x, y);
+  }
+
   ctx.restore();
 }

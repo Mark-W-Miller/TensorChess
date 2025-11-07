@@ -50,8 +50,8 @@ const KING_STEPS = [
   { df: -1, dr: -1 },
 ];
 
-export function createInitialState() {
-  const { board, turn } = parseFEN(START_FEN);
+export function createInitialState(fen = START_FEN) {
+  const { board, turn } = parseFEN(fen);
   return {
     board,
     turn,
@@ -155,6 +155,24 @@ export function getPieceAttacks(board, idx) {
   const piece = board[idx];
   if (!piece) return [];
   return getAttacks(board, idx, piece);
+}
+
+export function isKingInCheck(board, color) {
+  const kingSquare = getKingSquare(board, color);
+  if (kingSquare === -1) return false;
+  const opponent = color === 'w' ? 'b' : 'w';
+  return isSquareAttacked(board, kingSquare, opponent);
+}
+
+export function isCheckmate(state) {
+  if (!isKingInCheck(state.board, state.turn)) {
+    return false;
+  }
+  const hasEscape = state.board.some((piece, idx) => {
+    if (!piece || piece[0] !== state.turn) return false;
+    return getLegalMoves(state, idx).length > 0;
+  });
+  return !hasEscape;
 }
 
 export function getMoveRays(board, idx) {
@@ -356,13 +374,6 @@ function buildMove(board, from, to, promotionRank) {
     }
   }
   return move;
-}
-
-function isKingInCheck(board, color) {
-  const kingSquare = getKingSquare(board, color);
-  if (kingSquare === -1) return false;
-  const opponent = color === 'w' ? 'b' : 'w';
-  return isSquareAttacked(board, kingSquare, opponent);
 }
 
 function isSquareAttacked(board, square, color) {
