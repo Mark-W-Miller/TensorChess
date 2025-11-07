@@ -12,6 +12,8 @@ import {
   coordsToIndex,
   drawDragGhost,
   squareCenter,
+  SQUARE_SIZE,
+  BOARD_SIZE,
 } from './ui/board.js';
 import { computeHeat, drawHeatmap } from './ui/heatmap.js';
 import { drawVectors } from './ui/vectors.js';
@@ -24,6 +26,7 @@ const scenarioListEl = document.getElementById('scenario-list');
 const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
+const PROMOTION_PIECES = ['Q', 'R', 'B', 'N'];
 
 const SCENARIOS = [
   {
@@ -71,8 +74,14 @@ const SCENARIOS = [
   {
     id: 'promotion',
     name: 'Promotion Test',
-    description: 'White pawn on d7 promotes (auto-queens here) when you advance to d8.',
+    description: 'White pawn on d7 promotes when you advance to d8.',
     fen: '4k3/3P4/8/8/8/8/8/4K3 w - - 0 1',
+  },
+  {
+    id: 'promotion-black',
+    name: 'Black Promotion',
+    description: 'Black pawn on d2 promotes when you advance to d1.',
+    fen: '4K3/8/8/8/8/8/3p4/4k3 b - - 0 1',
   },
 ];
 
@@ -110,6 +119,10 @@ const drag = {
   previewState: null,
   previewPiece: null,
   snapPoint: null,
+  promotionChoice: null,
+  promotionMoveKey: null,
+  currentPromotionMove: null,
+  promotionOptions: [],
 };
 
 let heatValues = computeHeat(game);
@@ -183,10 +196,20 @@ function attachPointerEvents() {
     if (drag.active) {
       event.preventDefault();
       drag.pointer = { x: event.offsetX, y: event.offsetY };
-      const idx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+      let idx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+      if (drag.currentPromotionMove) {
+        if (idx !== drag.currentPromotionMove.to) {
+          idx = drag.currentPromotionMove.to;
+        }
+      } else if (idx === null) {
+        idx = drag.hovered;
+      }
+      const promotionChanged = drag.currentPromotionMove && updatePromotionHoverFromPointer(drag.pointer);
       if (idx !== drag.hovered) {
         drag.hovered = idx;
         updatePreviewForIndex(idx);
+      } else if (promotionChanged && drag.hovered !== null) {
+        updatePreviewForIndex(drag.hovered);
       }
       render();
       return;
@@ -199,7 +222,10 @@ function attachPointerEvents() {
     if (!drag.active) return;
     event.preventDefault();
     releasePointer(event.pointerId);
-    const dropIdx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    let dropIdx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    if (drag.currentPromotionMove) {
+      dropIdx = drag.currentPromotionMove.to;
+    }
     handleDrop(dropIdx);
     const hoverIdx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
     updateHoverState(hoverIdx);
@@ -236,12 +262,20 @@ function updatePreviewForIndex(idx) {
     drag.previewPiece = null;
     drag.snapPoint = null;
     heatValues = computeHeat(game);
+    clearPromotionCandidate();
     return;
   }
-  const nextState = simulateMove(game, move);
+  let effectiveMove = move;
+  if (move.promotion) {
+    setPromotionCandidate(move);
+    effectiveMove = { ...move, promotion: drag.promotionChoice || 'Q' };
+  } else {
+    clearPromotionCandidate();
+  }
+  const nextState = simulateMove(game, effectiveMove);
   drag.previewState = nextState;
-  drag.previewPiece = move.promotion ? move.piece[0] + move.promotion : move.piece;
-  drag.snapPoint = squareCenter(move.to, ui.flipped);
+  drag.previewPiece = effectiveMove.promotion ? effectiveMove.piece[0] + effectiveMove.promotion : effectiveMove.piece;
+  drag.snapPoint = squareCenter(effectiveMove.to, ui.flipped);
   heatValues = computeHeat(nextState, { previewBoard: nextState.board });
   render();
 }
@@ -265,7 +299,8 @@ function updateHoverState(idx) {
 function handleDrop(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (move) {
-    game = makeMove(game, move);
+    const execMove = move.promotion ? { ...move, promotion: drag.promotionChoice || 'Q' } : move;
+    game = makeMove(game, execMove);
     ui.movableSquares = collectMovableSquares(game);
     ui.checkmatedColor = detectCheckmate(game);
     if (ui.autoFlip) {
@@ -275,6 +310,7 @@ function handleDrop(idx) {
     ui.checkmatedColor = detectCheckmate(game);
   }
   heatValues = computeHeat(game);
+  clearPromotionCandidate();
   endDrag();
 }
 
@@ -287,6 +323,7 @@ function endDrag() {
   drag.previewState = null;
   drag.previewPiece = null;
   drag.snapPoint = null;
+  clearPromotionCandidate();
   ui.selected = null;
   ui.legalTargets = [];
   ui.movableSquares = collectMovableSquares(game);
@@ -328,6 +365,9 @@ function render() {
     const ghostPos = drag.snapPoint ?? drag.pointer;
     const ghostPiece = drag.previewPiece ?? drag.piece;
     drawDragGhost(overlayCtx, ghostPiece, ghostPos);
+  }
+  if (drag.currentPromotionMove && drag.promotionOptions.length) {
+    drawPromotionOptions(overlayCtx);
   }
 
   updateFitnessDisplay(vectorState);
@@ -460,4 +500,69 @@ function updateFitnessDisplay(state) {
   const score = evaluateBoard(state, 'w');
   fitnessEl.textContent = `Board Fitness: ${score.toFixed(2)}`;
   fitnessEquationEl.textContent = 'Fitness = (Material + Mobility - Threat)_White - (Material + Mobility - Threat)_Black';
+}
+
+function setPromotionCandidate(move) {
+  const key = `${move.from}-${move.to}`;
+  if (drag.promotionMoveKey !== key) {
+    drag.promotionMoveKey = key;
+    drag.promotionChoice = 'Q';
+  }
+  drag.currentPromotionMove = move;
+  drag.promotionOptions = computePromotionOptions(move);
+}
+
+function clearPromotionCandidate() {
+  drag.promotionChoice = null;
+  drag.promotionMoveKey = null;
+  drag.currentPromotionMove = null;
+  drag.promotionOptions = [];
+}
+
+function computePromotionOptions(move) {
+  const center = squareCenter(move.to, ui.flipped);
+  const radius = SQUARE_SIZE * 0.18;
+  const spacing = radius * 0.4;
+  const y = move.piece[0] === 'w' ? radius + 4 : BOARD_SIZE - (radius + 4);
+  return PROMOTION_PIECES.map((piece, idx) => {
+    let x = center.x + (idx - 1.5) * (radius * 2 + spacing);
+    const marginX = radius + 4;
+    x = Math.max(marginX, Math.min(BOARD_SIZE - marginX, x));
+    return { piece, x, y, radius };
+  });
+}
+
+function updatePromotionHoverFromPointer(pointer) {
+  if (!drag.currentPromotionMove || !drag.promotionOptions.length || !pointer) return false;
+  const hovered = drag.promotionOptions.find((opt) => {
+    const dx = pointer.x - opt.x;
+    const dy = pointer.y - opt.y;
+    return dx * dx + dy * dy <= opt.radius * opt.radius;
+  });
+  if (hovered && hovered.piece !== drag.promotionChoice) {
+    drag.promotionChoice = hovered.piece;
+    return true;
+  }
+  return false;
+}
+
+function drawPromotionOptions(ctx) {
+  if (!drag.currentPromotionMove || !drag.promotionOptions.length) return;
+  drag.promotionOptions.forEach((opt) => {
+    ctx.save();
+    ctx.beginPath();
+    const active = opt.piece === drag.promotionChoice;
+    ctx.fillStyle = active ? 'rgba(249, 115, 22, 0.92)' : 'rgba(30, 64, 175, 0.85)';
+    ctx.strokeStyle = 'rgba(241, 245, 249, 0.95)';
+    ctx.lineWidth = 2;
+    ctx.arc(opt.x, opt.y, opt.radius, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = active ? '#0f172a' : '#f8fafc';
+    ctx.font = `${SQUARE_SIZE * 0.32}px 'Inter', 'Segoe UI', sans-serif`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.fillText(opt.piece, opt.x, opt.y);
+    ctx.restore();
+  });
 }
