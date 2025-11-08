@@ -26,7 +26,7 @@ const scenarioListEl = document.getElementById('scenario-list');
 const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
-const PROMOTION_PIECES = ['Q', 'R', 'B', 'N'];
+const PROMOTION_PIECES = ['Q', 'N'];
 
 const SCENARIOS = [
   {
@@ -525,7 +525,8 @@ function computePromotionOptions(move) {
   const spacing = radius * 0.4;
   const y = move.piece[0] === 'w' ? radius + 4 : BOARD_SIZE - (radius + 4);
   return PROMOTION_PIECES.map((piece, idx) => {
-    let x = center.x + (idx - 1.5) * (radius * 2 + spacing);
+    const shift = idx === 0 ? -0.5 : 0.5;
+    let x = center.x + shift * (radius * 2 + spacing);
     const marginX = radius + 4;
     x = Math.max(marginX, Math.min(BOARD_SIZE - marginX, x));
     return { piece, x, y, radius };
