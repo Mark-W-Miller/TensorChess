@@ -6,6 +6,7 @@ import {
   isCheckmate,
   evaluateBoard,
   simulateMove,
+  getKingSquare,
 } from './model/chess.js';
 import {
   drawBoard,
@@ -26,7 +27,22 @@ const scenarioListEl = document.getElementById('scenario-list');
 const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
+const analysisLogEl = document.getElementById('analysis-log');
 const PROMOTION_PIECES = ['Q', 'N'];
+const FILE_LABELS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
+let kingFlash = null;
+let kingFlashInterval = null;
+let kingFlashTimeout = null;
+const AUTO_HOVER_DELAY = 1000;
+const AUTO_STEP_INTERVAL = 2000;
+const AUTO_PIECE_VALUE = {
+  P: 1,
+  N: 3,
+  B: 3,
+  R: 5,
+  Q: 9,
+  K: 100,
+};
 
 const SCENARIOS = [
   {
@@ -113,20 +129,24 @@ const drag = {
   active: false,
   from: null,
   piece: null,
-  pointer: { x: 0, y: 0 },
+  pointer: null,
   hovered: null,
   moveMap: new Map(),
   previewState: null,
+  previewBaseState: null,
   previewPiece: null,
   snapPoint: null,
   promotionChoice: null,
   promotionMoveKey: null,
   currentPromotionMove: null,
   promotionOptions: [],
+  hoverTimerId: null,
+  autoTimerId: null,
+  autoSequence: null,
 };
 
 let heatValues = computeHeat(game);
-
+const analysisEntries = [];
 attachControls();
 renderScenarioList();
 attachPointerEvents();
@@ -258,13 +278,16 @@ function attachPointerEvents() {
 function updatePreviewForIndex(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (!move) {
+    cancelAutoSequence();
     drag.previewState = null;
+    drag.previewBaseState = null;
     drag.previewPiece = null;
     drag.snapPoint = null;
     heatValues = computeHeat(game);
     clearPromotionCandidate();
     return;
   }
+  cancelAutoSequence({ revertPreview: false });
   let effectiveMove = move;
   if (move.promotion) {
     setPromotionCandidate(move);
@@ -274,9 +297,11 @@ function updatePreviewForIndex(idx) {
   }
   const nextState = simulateMove(game, effectiveMove);
   drag.previewState = nextState;
+  drag.previewBaseState = nextState;
   drag.previewPiece = effectiveMove.promotion ? effectiveMove.piece[0] + effectiveMove.promotion : effectiveMove.piece;
   drag.snapPoint = squareCenter(effectiveMove.to, ui.flipped);
   heatValues = computeHeat(nextState, { previewBoard: nextState.board });
+  scheduleAutoSequence();
   render();
 }
 
@@ -299,13 +324,19 @@ function updateHoverState(idx) {
 function handleDrop(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (move) {
+    cancelAutoSequence();
     const execMove = move.promotion ? { ...move, promotion: drag.promotionChoice || 'Q' } : move;
     game = makeMove(game, execMove);
     ui.movableSquares = collectMovableSquares(game);
     ui.checkmatedColor = detectCheckmate(game);
+    appendAnalysisEntry({
+      actor: 'White',
+      description: describeMove(execMove),
+    });
     if (ui.autoFlip) {
       toggleBoardView(false);
     }
+    setTimeout(() => autopilotBlackMove(), 0);
   } else {
     ui.checkmatedColor = detectCheckmate(game);
   }
@@ -315,6 +346,8 @@ function handleDrop(idx) {
 }
 
 function endDrag() {
+  cancelAutoSequence();
+  clearKingFlash();
   drag.active = false;
   drag.from = null;
   drag.piece = null;
@@ -323,6 +356,7 @@ function endDrag() {
   drag.previewState = null;
   drag.previewPiece = null;
   drag.snapPoint = null;
+  drag.pointer = null;
   clearPromotionCandidate();
   ui.selected = null;
   ui.legalTargets = [];
@@ -369,6 +403,7 @@ function render() {
   if (drag.currentPromotionMove && drag.promotionOptions.length) {
     drawPromotionOptions(overlayCtx);
   }
+  drawKingFlashOverlay(overlayCtx);
 
   updateFitnessDisplay(vectorState);
 }
@@ -456,8 +491,16 @@ function loadScenario(scenario) {
   drag.hovered = null;
   drag.moveMap = new Map();
   drag.previewState = null;
+  drag.previewBaseState = null;
   drag.previewPiece = null;
   drag.snapPoint = null;
+  drag.promotionChoice = null;
+  drag.promotionMoveKey = null;
+  drag.currentPromotionMove = null;
+  drag.promotionOptions = [];
+  cancelAutoSequence();
+  clearKingFlash();
+  clearAnalysisLog();
   ui.selected = null;
   ui.legalTargets = [];
   ui.hoverIdx = null;
@@ -566,4 +609,217 @@ function drawPromotionOptions(ctx) {
     ctx.fillText(opt.piece, opt.x, opt.y);
     ctx.restore();
   });
+}
+
+function drawKingFlashOverlay(ctx) {
+  if (!kingFlash) return;
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(kingFlash.x, kingFlash.y, kingFlash.radius, 0, Math.PI * 2);
+  ctx.fillStyle = kingFlash.phase ? 'rgba(239, 68, 68, 0.85)' : 'rgba(15, 23, 42, 0.9)';
+  ctx.strokeStyle = 'rgba(248, 250, 252, 0.95)';
+  ctx.lineWidth = 3;
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+function scheduleAutoSequence() {
+  cancelAutoSequence({ revertPreview: false, clearBase: false });
+  if (!drag.previewBaseState || drag.currentPromotionMove) return;
+  if (drag.previewBaseState.turn !== 'b') return;
+  drag.hoverTimerId = setTimeout(startAutoSequence, AUTO_HOVER_DELAY);
+}
+
+function startAutoSequence() {
+  drag.hoverTimerId = null;
+  if (!drag.previewBaseState || drag.previewBaseState.turn !== 'b') return;
+  const moves = collectAutoMoves(drag.previewBaseState, 'b');
+  if (!moves.length) return;
+  drag.autoSequence = { moves, index: 0 };
+  applyAutoMove();
+}
+
+function applyAutoMove() {
+  if (!drag.autoSequence || !drag.previewBaseState) return;
+  const move = drag.autoSequence.moves[drag.autoSequence.index];
+  drag.previewState = simulateMove(drag.previewBaseState, move);
+  const matedColor = detectCheckmate(drag.previewState);
+  if (matedColor === 'w') {
+    cancelAutoSequence({ revertPreview: false, clearBase: false, clearHover: false });
+    triggerKingFlash(drag.previewState, 'w');
+    render();
+    return;
+  }
+  render();
+  drag.autoTimerId = setTimeout(() => {
+    if (!drag.autoSequence) return;
+    drag.autoSequence.index = (drag.autoSequence.index + 1) % drag.autoSequence.moves.length;
+    applyAutoMove();
+  }, AUTO_STEP_INTERVAL);
+}
+
+function collectAutoMoves(state, color) {
+  const colorState = { ...state, turn: color };
+  const moves = [];
+  state.board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== color) return;
+    const legal = getLegalMoves(colorState, idx);
+    legal.forEach((move) => {
+      const nextState = simulateMove(colorState, move);
+      const evalScore = evaluateBoard(nextState, 'w');
+      const pieceValue = AUTO_PIECE_VALUE[piece[1]] || 0;
+      const mates = detectCheckmate(nextState) === 'w';
+      moves.push({
+        move,
+        evalScore,
+        pieceValue,
+        mates,
+      });
+    });
+  });
+  moves.sort((a, b) => {
+    if (a.mates !== b.mates) {
+      return a.mates ? -1 : 1; // mates first
+    }
+    if (a.evalScore !== b.evalScore) {
+      return b.evalScore - a.evalScore; // higher score -> safer for black
+    }
+    return a.pieceValue - b.pieceValue;
+  });
+  return moves.map((entry) => entry.move);
+}
+
+function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHover = true } = {}) {
+  if (clearHover && drag.hoverTimerId) {
+    clearTimeout(drag.hoverTimerId);
+    drag.hoverTimerId = null;
+  }
+  if (drag.autoTimerId) {
+    clearTimeout(drag.autoTimerId);
+    drag.autoTimerId = null;
+  }
+  drag.autoSequence = null;
+  if (revertPreview && drag.previewBaseState) {
+    drag.previewState = drag.previewBaseState;
+  }
+  if (clearBase) {
+    drag.previewBaseState = null;
+  }
+}
+
+function autopilotBlackMove() {
+  if (game.turn !== 'b') return;
+  const moves = collectAutoMoves(game, 'b');
+  if (!moves.length) return;
+  const execMove = moves[0];
+  const next = makeMove(game, execMove);
+  game = next;
+  ui.movableSquares = collectMovableSquares(game);
+  ui.checkmatedColor = detectCheckmate(game);
+  heatValues = computeHeat(game);
+  appendAnalysisEntry({
+    actor: 'Black',
+    description: describeAutoDecision(execMove),
+  });
+  triggerKingFlashIfNeeded(execMove);
+  render();
+}
+
+function triggerKingFlashIfNeeded(lastMove) {
+  if (!lastMove || !lastMove.captured) return;
+  const opponentColor = lastMove.captured[0];
+  const state = game;
+  const matedColor = detectCheckmate(state);
+  if (matedColor === opponentColor) {
+    triggerKingFlash(state, matedColor);
+  }
+}
+
+function triggerKingFlash(state, color) {
+  clearKingFlash();
+  const idx = getKingSquare(state.board, color);
+  if (idx === -1) return;
+  const { x, y } = squareCenter(idx, ui.flipped);
+  kingFlash = {
+    x,
+    y,
+    radius: SQUARE_SIZE * 0.38,
+    phase: false,
+  };
+  render();
+  kingFlashInterval = setInterval(() => {
+    if (!kingFlash) return;
+    kingFlash.phase = !kingFlash.phase;
+    render();
+  }, 200);
+  kingFlashTimeout = setTimeout(() => {
+    clearKingFlash();
+  }, 1200);
+}
+
+function clearKingFlash() {
+  if (kingFlashInterval) {
+    clearInterval(kingFlashInterval);
+    kingFlashInterval = null;
+  }
+  if (kingFlashTimeout) {
+    clearTimeout(kingFlashTimeout);
+    kingFlashTimeout = null;
+  }
+  if (kingFlash) {
+    kingFlash = null;
+    render();
+  }
+}
+
+function appendAnalysisEntry(entry) {
+  analysisEntries.push({
+    timestamp: new Date().toISOString(),
+    ...entry,
+  });
+  if (analysisEntries.length > 200) {
+    analysisEntries.shift();
+  }
+  renderAnalysisLog();
+}
+
+function renderAnalysisLog() {
+  if (!analysisLogEl) return;
+  analysisLogEl.innerHTML = '';
+  analysisEntries.forEach((entry) => {
+    const div = document.createElement('div');
+    div.className = 'analysis-entry';
+    div.innerHTML = `<strong>${entry.actor}</strong>: ${entry.description}`;
+    analysisLogEl.appendChild(div);
+  });
+  analysisLogEl.scrollTop = analysisLogEl.scrollHeight;
+}
+
+function clearAnalysisLog() {
+  analysisEntries.length = 0;
+  renderAnalysisLog();
+}
+
+function describeMove(move) {
+  const pieceMap = { P: 'Pawn', N: 'Knight', B: 'Bishop', R: 'Rook', Q: 'Queen', K: 'King' };
+  const piece = pieceMap[move.piece[1]] || move.piece[1];
+  const from = squareLabel(move.from);
+  const to = squareLabel(move.to);
+  const capture = move.captured ? ' capturing' : '';
+  const promo = move.promotion ? ` promoting to ${move.promotion}` : '';
+  return `${piece} ${from}→${to}${capture}${promo}`;
+}
+
+function describeAutoDecision(move) {
+  if (move.mates) {
+    return `${describeMove(move)} (finishes with checkmate)`;
+  }
+  return `${describeMove(move)} (safer reply)`;
+}
+
+function squareLabel(idx) {
+  const file = FILE_LABELS[idx % 8];
+  const rank = 8 - Math.floor(idx / 8);
+  return `${file}${rank}`;
 }
