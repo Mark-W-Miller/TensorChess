@@ -28,6 +28,8 @@ const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
+const perspectiveLabelEl = document.getElementById('perspective-label');
+const boardStatusDetailEl = document.getElementById('board-status-detail');
 const PROMOTION_PIECES = ['Q', 'N'];
 const FILE_LABELS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 let kingFlash = null;
@@ -135,6 +137,8 @@ const drag = {
   previewState: null,
   previewBaseState: null,
   previewPiece: null,
+  previewBasePiece: null,
+  previewBaseSnap: null,
   snapPoint: null,
   promotionChoice: null,
   promotionMoveKey: null,
@@ -282,6 +286,8 @@ function updatePreviewForIndex(idx) {
     drag.previewState = null;
     drag.previewBaseState = null;
     drag.previewPiece = null;
+    drag.previewBasePiece = null;
+    drag.previewBaseSnap = null;
     drag.snapPoint = null;
     heatValues = computeHeat(game);
     clearPromotionCandidate();
@@ -299,7 +305,9 @@ function updatePreviewForIndex(idx) {
   drag.previewState = nextState;
   drag.previewBaseState = nextState;
   drag.previewPiece = effectiveMove.promotion ? effectiveMove.piece[0] + effectiveMove.promotion : effectiveMove.piece;
+  drag.previewBasePiece = drag.previewPiece;
   drag.snapPoint = squareCenter(effectiveMove.to, ui.flipped);
+  drag.previewBaseSnap = drag.snapPoint;
   heatValues = computeHeat(nextState, { previewBoard: nextState.board });
   scheduleAutoSequence();
   render();
@@ -355,6 +363,9 @@ function endDrag() {
   drag.moveMap = new Map();
   drag.previewState = null;
   drag.previewPiece = null;
+  drag.previewBaseState = null;
+  drag.previewBasePiece = null;
+  drag.previewBaseSnap = null;
   drag.snapPoint = null;
   drag.pointer = null;
   clearPromotionCandidate();
@@ -405,6 +416,7 @@ function render() {
   }
   drawKingFlashOverlay(overlayCtx);
 
+  updateBoardStatus(vectorState);
   updateFitnessDisplay(vectorState);
 }
 
@@ -493,6 +505,8 @@ function loadScenario(scenario) {
   drag.previewState = null;
   drag.previewBaseState = null;
   drag.previewPiece = null;
+  drag.previewBasePiece = null;
+  drag.previewBaseSnap = null;
   drag.snapPoint = null;
   drag.promotionChoice = null;
   drag.promotionMoveKey = null;
@@ -543,6 +557,26 @@ function updateFitnessDisplay(state) {
   const score = evaluateBoard(state, 'w');
   fitnessEl.textContent = `Board Fitness: ${score.toFixed(2)}`;
   fitnessEquationEl.textContent = 'Fitness = (Material + Mobility - Threat)_White - (Material + Mobility - Threat)_Black';
+}
+
+function updateBoardStatus(state) {
+  if (perspectiveLabelEl) {
+    const bottomColor = ui.flipped ? 'Black' : 'White';
+    perspectiveLabelEl.textContent = `${bottomColor} pieces are shown on the bottom`;
+  }
+  if (!boardStatusDetailEl) return;
+  if (drag.autoSequence && drag.previewBaseState) {
+    const actor = drag.previewBaseState.turn === 'w' ? 'White' : 'Black';
+    boardStatusDetailEl.textContent = `Auto preview: showing ${actor === 'White' ? 'White' : 'Black'} reply`;
+    return;
+  }
+  if (drag.previewState && drag.previewBaseState) {
+    const actor = drag.previewBaseState.turn === 'w' ? 'White' : 'Black';
+    boardStatusDetailEl.textContent = `Preview: ${actor} to move`;
+    return;
+  }
+  const actor = state?.turn === 'w' ? 'White' : 'Black';
+  boardStatusDetailEl.textContent = `Turn: ${actor} to move`;
 }
 
 function setPromotionCandidate(move) {
@@ -644,6 +678,8 @@ function applyAutoMove() {
   if (!drag.autoSequence || !drag.previewBaseState) return;
   const move = drag.autoSequence.moves[drag.autoSequence.index];
   drag.previewState = simulateMove(drag.previewBaseState, move);
+  drag.previewPiece = move.promotion ? move.piece[0] + move.promotion : move.piece;
+  drag.snapPoint = squareCenter(move.to, ui.flipped);
   const matedColor = detectCheckmate(drag.previewState);
   if (matedColor === 'w') {
     cancelAutoSequence({ revertPreview: false, clearBase: false, clearHover: false });
@@ -667,7 +703,7 @@ function collectAutoMoves(state, color) {
     const legal = getLegalMoves(colorState, idx);
     legal.forEach((move) => {
       const nextState = simulateMove(colorState, move);
-      const evalScore = evaluateBoard(nextState, 'w');
+      const evalScore = evaluateBoard(nextState, color);
       const pieceValue = AUTO_PIECE_VALUE[piece[1]] || 0;
       const mates = detectCheckmate(nextState) === 'w';
       moves.push({
@@ -683,7 +719,7 @@ function collectAutoMoves(state, color) {
       return a.mates ? -1 : 1; // mates first
     }
     if (a.evalScore !== b.evalScore) {
-      return b.evalScore - a.evalScore; // higher score -> safer for black
+      return b.evalScore - a.evalScore; // higher score -> safer for current color
     }
     return a.pieceValue - b.pieceValue;
   });
@@ -702,9 +738,13 @@ function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHove
   drag.autoSequence = null;
   if (revertPreview && drag.previewBaseState) {
     drag.previewState = drag.previewBaseState;
+    drag.previewPiece = drag.previewBasePiece;
+    drag.snapPoint = drag.previewBaseSnap;
   }
   if (clearBase) {
     drag.previewBaseState = null;
+    drag.previewBasePiece = null;
+    drag.previewBaseSnap = null;
   }
 }
 
