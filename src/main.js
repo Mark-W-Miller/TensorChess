@@ -30,6 +30,9 @@ const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
+const actionBarEl = document.getElementById('action-bar');
+const blackMoveBtn = document.getElementById('black-move-btn');
+const backsyBtn = document.getElementById('backsy-btn');
 const PROMOTION_PIECES = ['Q', 'N'];
 const FILE_LABELS = ['a', 'b', 'c', 'd', 'e', 'f', 'g', 'h'];
 let kingFlash = null;
@@ -149,11 +152,17 @@ const drag = {
   autoSequence: null,
 };
 
+const playerUndoStack = [];
+let pendingBlackResponse = null;
+let actionBarVisible = false;
+
 let heatValues = computeHeat(game);
 const analysisEntries = [];
 attachControls();
 renderScenarioList();
 attachPointerEvents();
+attachActionControls();
+updateActionButtons();
 render();
 
 function attachControls() {
@@ -333,6 +342,7 @@ function handleDrop(idx) {
   const move = idx !== null ? drag.moveMap.get(idx) : null;
   if (move) {
     cancelAutoSequence();
+    playerUndoStack.push(cloneState(game));
     const execMove = move.promotion ? { ...move, promotion: drag.promotionChoice || 'Q' } : move;
     game = makeMove(game, execMove);
     ui.movableSquares = collectMovableSquares(game);
@@ -344,7 +354,8 @@ function handleDrop(idx) {
     if (ui.autoFlip) {
       toggleBoardView(false);
     }
-    setTimeout(() => autopilotBlackMove(), 0);
+    pendingBlackResponse = null;
+    prepareBlackResponseOptions();
   } else {
     ui.checkmatedColor = detectCheckmate(game);
   }
@@ -496,6 +507,8 @@ function updateScenarioInfo() {
 function loadScenario(scenario) {
   currentScenario = scenario;
   game = createInitialState(scenario.fen);
+  playerUndoStack.length = 0;
+  pendingBlackResponse = null;
   heatValues = computeHeat(game);
   drag.active = false;
   drag.from = null;
@@ -522,6 +535,8 @@ function loadScenario(scenario) {
   ui.checkmatedColor = detectCheckmate(game);
   renderScenarioList();
   saveScenarioSelection();
+  hideActionBar();
+  updateActionButtons();
   render();
 }
 
@@ -577,6 +592,54 @@ function updateBoardStatus(state) {
   }
   const actor = state?.turn === 'w' ? 'White' : 'Black';
   boardStatusDetailEl.textContent = `Turn: ${actor} to move`;
+}
+
+function attachActionControls() {
+  if (blackMoveBtn) {
+    blackMoveBtn.addEventListener('click', handleBlackMoveClick);
+  }
+  if (backsyBtn) {
+    backsyBtn.addEventListener('click', handleBacksyClick);
+  }
+}
+
+function prepareBlackResponseOptions() {
+  if (game.turn !== 'b') {
+    pendingBlackResponse = null;
+    updateActionButtons();
+    return;
+  }
+  const baseState = cloneState(game);
+  const moves = collectAutoMoves(baseState, 'b');
+  pendingBlackResponse = {
+    baseState,
+    moves,
+    index: 0,
+  };
+  revealActionBar();
+  updateActionButtons();
+}
+
+function revealActionBar() {
+  if (!actionBarEl || actionBarVisible) return;
+  actionBarEl.classList.remove('action-bar--hidden');
+  actionBarVisible = true;
+}
+
+function hideActionBar() {
+  if (!actionBarEl) return;
+  actionBarEl.classList.add('action-bar--hidden');
+  actionBarVisible = false;
+}
+
+function updateActionButtons() {
+  if (blackMoveBtn) {
+    const canMoveBlack = Boolean(pendingBlackResponse && pendingBlackResponse.moves.length);
+    blackMoveBtn.disabled = !canMoveBlack;
+  }
+  if (backsyBtn) {
+    backsyBtn.disabled = playerUndoStack.length === 0;
+  }
 }
 
 function setPromotionCandidate(move) {
@@ -643,6 +706,55 @@ function drawPromotionOptions(ctx) {
     ctx.fillText(opt.piece, opt.x, opt.y);
     ctx.restore();
   });
+}
+
+function handleBlackMoveClick() {
+  if (!pendingBlackResponse || !pendingBlackResponse.moves.length) return;
+  const { baseState, moves } = pendingBlackResponse;
+  const move = moves[pendingBlackResponse.index];
+  const nextState = simulateMove(baseState, move);
+  game = nextState;
+  ui.movableSquares = collectMovableSquares(game);
+  ui.checkmatedColor = detectCheckmate(game);
+  heatValues = computeHeat(game);
+  appendAnalysisEntry({
+    actor: 'Black',
+    description: describeAutoDecision(move),
+  });
+  triggerKingFlashIfNeeded(move);
+  pendingBlackResponse.index = (pendingBlackResponse.index + 1) % moves.length;
+  render();
+}
+
+function handleBacksyClick() {
+  if (!playerUndoStack.length) return;
+  const snapshot = playerUndoStack.pop();
+  if (!snapshot) return;
+  pendingBlackResponse = null;
+  game = cloneState(snapshot);
+  ui.checkmatedColor = detectCheckmate(game);
+  heatValues = computeHeat(game);
+  drag.active = false;
+  drag.from = null;
+  drag.piece = null;
+  drag.hovered = null;
+  drag.moveMap = new Map();
+  drag.previewState = null;
+  drag.previewBaseState = null;
+  drag.previewPiece = null;
+  drag.previewBasePiece = null;
+  drag.previewBaseSnap = null;
+  drag.snapPoint = null;
+  drag.pointer = null;
+  cancelAutoSequence({ clearBase: true });
+  clearPromotionCandidate();
+  ui.selected = null;
+  ui.legalTargets = [];
+  ui.hoverIdx = null;
+  ui.movableSquares = collectMovableSquares(game);
+  clearKingFlash();
+  updateActionButtons();
+  render();
 }
 
 function drawKingFlashOverlay(ctx) {
@@ -748,24 +860,6 @@ function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHove
   }
 }
 
-function autopilotBlackMove() {
-  if (game.turn !== 'b') return;
-  const moves = collectAutoMoves(game, 'b');
-  if (!moves.length) return;
-  const execMove = moves[0];
-  const next = makeMove(game, execMove);
-  game = next;
-  ui.movableSquares = collectMovableSquares(game);
-  ui.checkmatedColor = detectCheckmate(game);
-  heatValues = computeHeat(game);
-  appendAnalysisEntry({
-    actor: 'Black',
-    description: describeAutoDecision(execMove),
-  });
-  triggerKingFlashIfNeeded(execMove);
-  render();
-}
-
 function triggerKingFlashIfNeeded(lastMove) {
   if (!lastMove || !lastMove.captured) return;
   const opponentColor = lastMove.captured[0];
@@ -811,6 +905,21 @@ function clearKingFlash() {
     kingFlash = null;
     render();
   }
+}
+
+function cloneState(state) {
+  if (!state) return null;
+  return {
+    board: state.board.slice(),
+    turn: state.turn,
+    lastMove: state.lastMove ? cloneMove(state.lastMove) : null,
+    castling: state.castling ? `${state.castling}` : '',
+    enPassant: typeof state.enPassant === 'number' ? state.enPassant : null,
+  };
+}
+
+function cloneMove(move) {
+  return { ...move };
 }
 
 function appendAnalysisEntry(entry) {

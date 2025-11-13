@@ -73,6 +73,25 @@
         accent-color: #f472b6;
       }
 
+      .action-bar {
+        width: 100%;
+        display: flex;
+        justify-content: center;
+        gap: 1rem;
+        padding: 0.75rem 0;
+      }
+
+      .action-bar--hidden {
+        display: none;
+      }
+
+      .action-bar button {
+        min-width: 140px;
+        font-weight: 600;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+      }
+
       #board-wrap {
         position: relative;
         width: 800px;
@@ -257,6 +276,10 @@
           <div id="scenario-list"></div>
           <div id="scenario-info"></div>
         </aside>
+      </div>
+      <div class="action-bar action-bar--hidden" id="action-bar">
+        <button id="black-move-btn" disabled>Black Move</button>
+        <button id="backsy-btn" disabled>Backsy</button>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>
