@@ -1,4 +1,4 @@
-export const BOARD_SIZE = 800;
+export const BOARD_SIZE = 960;
 export const SQUARE_SIZE = BOARD_SIZE / 8;
 
 const LIGHT = '#ccd6f6';

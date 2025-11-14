@@ -1,97 +1,40 @@
 import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
+import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
+import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 
 const SQUARE_SIZE = 1;
 const BOARD_OFFSET = (8 * SQUARE_SIZE) / 2;
 
-const PIECE_COLORS = {
-  w: 0xf8f4e3,
-  b: 0x111827,
+const BOARD_MODEL_PATH = '/OBJ/GEO_ChessBoard.obj';
+
+const PIECE_MODEL_PATHS = {
+  w: {
+    P: '/OBJ/GEO_WhitePawn_08.obj',
+    N: '/OBJ/GEO_WhiteKnight_02.obj',
+    B: '/OBJ/GEO_WhiteBishop_02.obj',
+    R: '/OBJ/GEO_WhiteRook_02.obj',
+    Q: '/OBJ/GEO_WhiteQueen.obj',
+    K: '/OBJ/GEO_WhiteKing.obj',
+  },
+  b: {
+    P: '/OBJ/GEO_BlackPawn_01.obj',
+    N: '/OBJ/GEO_BlackKnight_01.obj',
+    B: '/OBJ/GEO_BlackBishop_01.obj',
+    R: '/OBJ/GEO_BlackRook_01.obj',
+    Q: '/OBJ/GEO_BlackQueen.obj',
+    K: '/OBJ/GEO_BlackKing.obj',
+  },
 };
 
-const PIECE_HEIGHT = {
-  P: 1.1,
-  N: 1.4,
-  B: 1.6,
-  R: 1.4,
-  Q: 1.9,
-  K: 2.1,
-};
-
-function createBoardMesh() {
-  const group = new THREE.Group();
-  for (let rank = 0; rank < 8; rank++) {
-    for (let file = 0; file < 8; file++) {
-      const color = (rank + file) % 2 === 0 ? 0xf5f5f4 : 0x475569;
-      const geo = new THREE.BoxGeometry(SQUARE_SIZE, 0.05, SQUARE_SIZE);
-      const mat = new THREE.MeshPhongMaterial({ color });
-      const tile = new THREE.Mesh(geo, mat);
-      tile.position.set(file * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2, -0.025, rank * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2);
-      group.add(tile);
-    }
-  }
-  return group;
-}
-
-function createPieceMesh(piece) {
-  const color = piece[0];
-  const type = piece[1];
-  const material = new THREE.MeshPhongMaterial({ color: PIECE_COLORS[color], shininess: 60 });
-  let mesh;
-  switch (type) {
-    case 'P':
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.22, 0.4, 24), material);
-      mesh.add(createHead(0.18, material));
-      break;
-    case 'R':
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.25, 0.28, 0.9, 32), material);
-      break;
-    case 'N':
-      mesh = new THREE.Mesh(new THREE.ConeGeometry(0.28, 1.1, 24), material);
-      break;
-    case 'B':
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.2, 0.3, 1.15, 24), material);
-      mesh.add(createHead(0.15, material));
-      break;
-    case 'Q':
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.3, 0.4, 1.4, 32), material);
-      mesh.add(createCrown(material));
-      break;
-    case 'K':
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.28, 0.38, 1.5, 32), material);
-      mesh.add(createCross(material));
-      break;
-    default:
-      mesh = new THREE.Mesh(new THREE.CylinderGeometry(0.22, 0.26, 0.4, 24), material);
-  }
-  mesh.castShadow = true;
-  mesh.receiveShadow = true;
-  return mesh;
-}
-
-function createHead(radius, material) {
-  const sphere = new THREE.Mesh(new THREE.SphereGeometry(radius, 24, 24), material);
-  sphere.position.y = 0.3;
-  return sphere;
-}
-
-function createCrown(material) {
-  const crown = new THREE.Mesh(new THREE.TorusGeometry(0.22, 0.05, 12, 24), material);
-  crown.rotation.x = Math.PI / 2;
-  crown.position.y = 0.65;
-  return crown;
-}
-
-function createCross(material) {
-  const cross = new THREE.Group();
-  const upright = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.5, 0.08), material);
-  upright.position.y = 0.85;
-  const bar = new THREE.Mesh(new THREE.BoxGeometry(0.24, 0.1, 0.08), material);
-  bar.position.y = 0.95;
-  cross.add(upright);
-  cross.add(bar);
-  return cross;
-}
+const objLoader = new OBJLoader();
+const mtlLoader = new MTLLoader();
+mtlLoader.setResourcePath('/Textures/');
+const modelCache = new Map();
+const pendingLoads = new Map();
+let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
+let boardBounds = null;
+let requestRelayout = () => {};
 
 export function initBoard3D(container) {
   if (!container) return null;
@@ -109,7 +52,7 @@ export function initBoard3D(container) {
   const controls = new OrbitControls(camera, renderer.domElement);
   controls.enablePan = false;
   controls.minDistance = 4;
-  controls.maxDistance = 24;
+  controls.maxDistance = 30;
   controls.target.set(0, 0, 0);
   controls.update();
 
@@ -120,11 +63,31 @@ export function initBoard3D(container) {
   directional.castShadow = true;
   scene.add(directional);
 
-  const boardMesh = createBoardMesh();
-  scene.add(boardMesh);
+  loadModel(BOARD_MODEL_PATH)
+    .then((template) => {
+      const boardMesh = template.clone(true);
+      centerMesh(boardMesh);
+      fitBoardToGrid(boardMesh);
+      updateBoardMetricsFromMesh(boardMesh);
+      boardBounds = new THREE.Box3().setFromObject(boardMesh);
+      scene.add(boardMesh);
+    })
+    .catch(() => {
+      const fallback = createFallbackBoard();
+      updateBoardMetricsFromMesh(fallback);
+      boardBounds = new THREE.Box3().setFromObject(fallback);
+      scene.add(fallback);
+    });
 
   const pieceGroup = new THREE.Group();
   scene.add(pieceGroup);
+  let updateToken = 0;
+  let lastBoardState = null;
+  requestRelayout = () => {
+    if (lastBoardState) {
+      updateBoard(lastBoardState);
+    }
+  };
 
   function animate() {
     requestAnimationFrame(animate);
@@ -134,17 +97,33 @@ export function initBoard3D(container) {
 
   function updateBoard(board) {
     if (!board) return;
+    lastBoardState = board;
+    const token = ++updateToken;
     while (pieceGroup.children.length) {
       const child = pieceGroup.children.pop();
       pieceGroup.remove(child);
     }
     board.forEach((piece, idx) => {
       if (!piece) return;
-      const mesh = createPieceMesh(piece).clone();
-      const x = (idx % 8) * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2;
-      const z = Math.floor(idx / 8) * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2;
-      placePieceOnBoard(mesh, x, z);
-      pieceGroup.add(mesh);
+      const modelPath = PIECE_MODEL_PATHS[piece[0]]?.[piece[1]];
+      if (!modelPath) return;
+      const file = idx % 8;
+      const rank = Math.floor(idx / 8);
+      loadModel(modelPath)
+        .then((template) => {
+          if (token !== updateToken) return;
+          const mesh = template.clone(true);
+          mesh.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+              child.receiveShadow = true;
+            }
+          });
+          scalePieceMesh(mesh);
+          placePieceOnBoard(mesh, file, rank);
+          pieceGroup.add(mesh);
+        })
+        .catch(() => {});
     });
   }
 
@@ -169,10 +148,195 @@ export function initBoard3D(container) {
   };
 }
 
-function placePieceOnBoard(mesh, x, z) {
-  mesh.position.set(x, 0, z);
+function placePieceOnBoard(mesh, file, rank) {
+  const x = boardMetrics.startX + file * boardMetrics.squareSizeX;
+  const z = boardMetrics.startZ + rank * boardMetrics.squareSizeZ;
+  mesh.position.set(x, boardMetrics.surfaceY, z);
   mesh.updateMatrixWorld(true);
   const bounds = new THREE.Box3().setFromObject(mesh);
-  const lift = -bounds.min.y + 0.02;
-  mesh.position.y += lift;
+  const desiredBase = boardMetrics.surfaceY + 0.01;
+  const delta = desiredBase - bounds.min.y;
+  mesh.position.y += delta;
+}
+
+function scalePieceMesh(mesh) {
+  mesh.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(mesh);
+  const size = bounds.getSize(new THREE.Vector3());
+  const target = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * 0.8;
+  const maxDiameter = Math.max(size.x, size.z) || 1;
+  const scale = target / maxDiameter;
+  mesh.scale.multiplyScalar(scale);
+  mesh.updateMatrixWorld(true);
+}
+
+function centerMesh(mesh) {
+  mesh.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(mesh);
+  const center = bounds.getCenter(new THREE.Vector3());
+  mesh.position.sub(center);
+}
+
+function createBoardMetrics(width, depth, surfaceY, borderX = 0, borderZ = 0) {
+  const playableWidth = Math.max(0.0001, width - 2 * borderX);
+  const playableDepth = Math.max(0.0001, depth - 2 * borderZ);
+  const squareSizeX = playableWidth / 8;
+  const squareSizeZ = playableDepth / 8;
+  return {
+    width,
+    depth,
+    squareSizeX,
+    squareSizeZ,
+    startX: -width / 2 + borderX + squareSizeX / 2,
+    startZ: -depth / 2 + borderZ + squareSizeZ / 2,
+    surfaceY,
+    borderX,
+    borderZ,
+  };
+}
+
+function loadModel(objPath) {
+  if (modelCache.has(objPath)) {
+    return Promise.resolve(modelCache.get(objPath));
+  }
+  if (pendingLoads.has(objPath)) {
+    return pendingLoads.get(objPath);
+  }
+  const basePath = objPath.replace(/\.obj$/i, '');
+  const mtlPath = `${basePath}.mtl`;
+  const promise = new Promise((resolve, reject) => {
+    mtlLoader.load(
+      mtlPath,
+      (materials) => {
+        materials.preload();
+        objLoader.setMaterials(materials);
+        objLoader.load(
+          objPath,
+          (obj) => {
+            finalizeLoad(objPath, obj, resolve);
+          },
+          undefined,
+          (err) => {
+            pendingLoads.delete(objPath);
+            reject(err);
+          },
+        );
+      },
+      undefined,
+      () => {
+        objLoader.load(
+          objPath,
+          (obj) => {
+            finalizeLoad(objPath, obj, resolve);
+          },
+          undefined,
+          (err) => {
+            pendingLoads.delete(objPath);
+            reject(err);
+          },
+        );
+      },
+    );
+  });
+  pendingLoads.set(objPath, promise);
+  return promise;
+}
+
+function finalizeLoad(key, object, resolve) {
+  pendingLoads.delete(key);
+  modelCache.set(key, object);
+  resolve(object);
+}
+
+function createFallbackBoard() {
+  const group = new THREE.Group();
+  for (let rank = 0; rank < 8; rank++) {
+    for (let file = 0; file < 8; file++) {
+      const color = (rank + file) % 2 === 0 ? 0xf5f5f4 : 0x475569;
+      const geo = new THREE.BoxGeometry(SQUARE_SIZE, 0.05, SQUARE_SIZE);
+      const mat = new THREE.MeshPhongMaterial({ color });
+      const tile = new THREE.Mesh(geo, mat);
+      tile.position.set(file * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2, -0.025, rank * SQUARE_SIZE - BOARD_OFFSET + SQUARE_SIZE / 2);
+      group.add(tile);
+    }
+  }
+  return group;
+}
+
+function fitBoardToGrid(boardMesh) {
+  boardMesh.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(boardMesh);
+  const size = bounds.getSize(new THREE.Vector3());
+  const targetWidth = 8 * SQUARE_SIZE;
+  const targetDepth = 8 * SQUARE_SIZE;
+  const scaleX = targetWidth / (size.x || targetWidth);
+  const scaleZ = targetDepth / (size.z || targetDepth);
+  const scale = Math.min(scaleX, scaleZ);
+  boardMesh.scale.multiplyScalar(scale);
+  boardMesh.updateMatrixWorld(true);
+  centerMesh(boardMesh);
+}
+
+function updateBoardMetricsFromMesh(boardMesh) {
+  boardMesh.updateMatrixWorld(true);
+  const bounds = new THREE.Box3().setFromObject(boardMesh);
+  const size = bounds.getSize(new THREE.Vector3());
+  const { borderX, borderZ } = computeBorderOffsets(boardMesh, bounds);
+  boardMetrics = createBoardMetrics(size.x, size.z, bounds.max.y, borderX, borderZ);
+  requestRelayout();
+}
+
+function computeBorderOffsets(boardMesh, bounds) {
+  const targetSquares = determineSquarePositions(boardMesh, bounds);
+  if (!targetSquares) {
+    return { borderX: 0, borderZ: 0, squareSizeX: bounds.getSize(new THREE.Vector3()).x / 8, squareSizeZ: bounds.getSize(new THREE.Vector3()).z / 8 };
+  }
+  const { minFile, maxFile, minRank, maxRank } = targetSquares;
+  const squareSizeX = (maxFile - minFile) / 7;
+  const squareSizeZ = (maxRank - minRank) / 7;
+  return {
+    borderX: minFile - bounds.min.x,
+    borderZ: minRank - bounds.min.z,
+    squareSizeX,
+    squareSizeZ,
+  };
+}
+
+function determineSquarePositions(boardMesh, bounds) {
+  const points = [];
+  const vertex = new THREE.Vector3();
+  boardMesh.traverse((child) => {
+    if (!child.isMesh || !child.geometry?.attributes?.position) return;
+    const position = child.geometry.attributes.position;
+    for (let i = 0; i < position.count; i++) {
+      vertex.fromBufferAttribute(position, i).applyMatrix4(child.matrixWorld);
+      points.push({ x: vertex.x, z: vertex.z });
+    }
+  });
+  if (!points.length) return null;
+  const xs = Array.from(new Set(points.map((p) => Number(p.x.toFixed(4))))).sort((a, b) => a - b);
+  const zs = Array.from(new Set(points.map((p) => Number(p.z.toFixed(4))))).sort((a, b) => a - b);
+  const gapX = largestGap(xs);
+  const gapZ = largestGap(zs);
+  if (!gapX || !gapZ) return null;
+  return {
+    minFile: gapX.min,
+    maxFile: gapX.max,
+    minRank: gapZ.min,
+    maxRank: gapZ.max,
+  };
+}
+
+function largestGap(values) {
+  if (values.length < 2) return null;
+  let maxGap = -Infinity;
+  let result = null;
+  for (let i = 0; i < values.length - 1; i++) {
+    const gap = values[i + 1] - values[i];
+    if (gap > maxGap) {
+      maxGap = gap;
+      result = { min: values[i], max: values[i + 1], gap };
+    }
+  }
+  return result;
 }

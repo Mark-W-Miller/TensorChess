@@ -29,7 +29,6 @@ const overlayCtx = overlayCanvas.getContext('2d');
 const scenarioListEl = document.getElementById('scenario-list');
 const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
-const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
 const board3dContainer = document.getElementById('board3d-container');
 const viewModeInputs = document.querySelectorAll('input[name="view-mode"]');
@@ -636,11 +635,10 @@ function saveScenarioSelection() {
 }
 
 function updateFitnessDisplay(state) {
-  if (!fitnessEl || !fitnessEquationEl || !state) return;
+  if (!fitnessEl || !state) return;
   const score = evaluateBoard(state, playerColor);
   const perspective = playerColor === 'w' ? 'White' : 'Black';
   fitnessEl.textContent = `Board Fitness (${perspective}): ${score.toFixed(2)}`;
-  fitnessEquationEl.textContent = `Fitness (${perspective}) = Advantage_${perspective} - Advantage_${perspective === 'w' ? 'Black' : 'White'}`;
 }
 
 function updateBoardStatus(state) {

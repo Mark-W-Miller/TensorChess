@@ -36,7 +36,9 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
-        align-items: flex-start;
+        align-items: center;
+        margin-left: auto;
+        align-self: flex-end;
       }
       .sidebar-column {
         flex: 0 0 280px;
@@ -55,11 +57,18 @@
         display: flex;
         gap: 0.75rem;
         flex-wrap: wrap;
-        justify-content: center;
+        justify-content: space-between;
+        align-items: center;
+      }
+      .control-buttons {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.75rem;
+        align-items: center;
       }
       .view-toggle {
         display: flex;
-        gap: 0.75rem;
+        gap: 0.5rem;
         align-items: center;
         font-size: 0.9rem;
       }
@@ -107,12 +116,12 @@
 
       #board-wrap {
         position: relative;
-        width: 800px;
-        height: 800px;
+        width: 960px;
+        height: 960px;
       }
       #board3d-container {
-        width: 800px;
-        height: 800px;
+        width: 960px;
+        height: 960px;
         border-radius: 8px;
         box-shadow: 0 10px 40px rgba(15, 23, 42, 0.8);
         overflow: hidden;
@@ -317,62 +326,42 @@
       }
 
       .fitness {
-        min-width: 320px;
+        width: 100%;
         color: #e0f2fe;
-        font-size: 1.15rem;
-        font-weight: 600;
+        font-size: 1.2rem;
+        font-weight: 700;
         text-shadow: 0 0 12px rgba(14, 165, 233, 0.8);
-        line-height: 1.35;
-      }
-
-      .fitness-equation {
-        font-size: 0.95rem;
-        color: #dbeafe;
-        opacity: 0.95;
+        line-height: 1.4;
+        text-align: center;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        border-radius: 12px;
+        padding: 0.45rem 0.6rem;
+        background: rgba(15, 23, 42, 0.55);
       }
     </style>
   </head>
   <body>
     <div class="app">
       <div class="controls">
-        <button id="reset-btn">Reset</button>
-        <button id="flip-btn">Flip Board</button>
-        <button id="black-move-btn">Opponent Move</button>
-        <button id="backsy-btn">Backsy</button>
-        <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
-        <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
+        <div class="control-buttons">
+          <button id="reset-btn">Reset</button>
+          <button id="flip-btn">Flip Board</button>
+          <button id="black-move-btn">Opponent Move</button>
+          <button id="backsy-btn">Backsy</button>
+          <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
+          <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
+        </div>
+        <div class="view-toggle">
+          <span>View:</span>
+          <label><input type="radio" name="view-mode" value="2d" checked /> 2D</label>
+          <label><input type="radio" name="view-mode" value="3d" /> 3D</label>
+        </div>
       </div>
       <div class="workspace">
-        <aside class="analysis-panel">
-          <div class="board-status">
-            <strong>Board Perspective</strong>
-            <div id="perspective-label"></div>
-            <div id="board-status-detail"></div>
-          </div>
-          <h2>Decision Log</h2>
-          <div id="analysis-log"></div>
-        </aside>
-        <div class="board-column">
-          <div id="board-wrap">
-            <canvas id="board" width="800" height="800"></canvas>
-            <canvas id="overlay" width="800" height="800"></canvas>
-          </div>
-          <div id="board3d-container"></div>
-          <div class="view-toggle">
-            <label><input type="radio" name="view-mode" value="2d" checked /> 2D View</label>
-            <label><input type="radio" name="view-mode" value="3d" /> 3D View</label>
-          </div>
+        <div class="sidebar-column">
           <div class="fitness">
             <div id="fitness-value"></div>
-            <div id="fitness-equation" class="fitness-equation"></div>
           </div>
-        </div>
-        <div class="sidebar-column">
-          <aside class="scenario-panel">
-            <h2>Scenarios</h2>
-            <div id="scenario-list"></div>
-            <div id="scenario-info"></div>
-          </aside>
           <div class="safe-panel">
             <div class="safe-row">
               <div class="safe-label">White Safe</div>
@@ -433,6 +422,27 @@
               </div>
             </div>
           </div>
+          <aside class="analysis-panel">
+            <div class="board-status">
+              <strong>Board Perspective</strong>
+              <div id="perspective-label"></div>
+              <div id="board-status-detail"></div>
+            </div>
+            <h2>Decision Log</h2>
+            <div id="analysis-log"></div>
+          </aside>
+          <aside class="scenario-panel">
+            <h2>Scenarios</h2>
+            <div id="scenario-list"></div>
+            <div id="scenario-info"></div>
+          </aside>
+        </div>
+        <div class="board-column">
+          <div id="board-wrap">
+            <canvas id="board" width="960" height="960"></canvas>
+            <canvas id="overlay" width="960" height="960"></canvas>
+          </div>
+          <div id="board3d-container"></div>
         </div>
       </div>
     </div>
