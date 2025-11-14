@@ -95,6 +95,50 @@
         accent-color: #f472b6;
       }
 
+      .material-select select {
+        border-radius: 8px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.4);
+        color: inherit;
+        padding: 0.15rem 0.4rem;
+      }
+
+      .layer-toggle {
+        position: relative;
+      }
+
+      #layer-button {
+        border-radius: 999px;
+        border: 1px solid rgba(148, 163, 184, 0.3);
+        background: rgba(15, 23, 42, 0.4);
+        color: inherit;
+        padding: 0.35rem 0.85rem;
+      }
+
+      .layer-menu {
+        position: absolute;
+        right: 0;
+        top: calc(100% + 0.3rem);
+        background: rgba(15, 23, 42, 0.95);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        border-radius: 12px;
+        padding: 0.65rem 0.9rem;
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+        box-shadow: 0 12px 30px rgba(15, 23, 42, 0.85);
+        z-index: 20;
+      }
+
+      .layer-menu.hidden {
+        display: none;
+      }
+
+      .layer-menu label {
+        font-size: 0.85rem;
+        gap: 0.4rem;
+      }
+
       .action-bar {
         width: 100%;
         display: flex;
@@ -357,6 +401,15 @@
               <option value="marble">Marble</option>
             </select>
           </label>
+          <div class="layer-toggle">
+            <button id="layer-button">Layers ▾</button>
+            <div id="layer-menu" class="layer-menu hidden">
+              <label><input type="checkbox" id="layer-heat" checked /> Heat Map</label>
+              <label><input type="checkbox" id="layer-vector" /> Move Vector Rings</label>
+              <label><input type="checkbox" id="layer-attack" /> Attack Level</label>
+              <label><input type="checkbox" id="layer-support" /> Support Level</label>
+            </div>
+          </div>
         </div>
         <div class="view-toggle">
           <span>View:</span>

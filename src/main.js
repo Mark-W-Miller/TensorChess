@@ -33,6 +33,12 @@ const analysisLogEl = document.getElementById('analysis-log');
 const board3dContainer = document.getElementById('board3d-container');
 const viewModeInputs = document.querySelectorAll('input[name="view-mode"]');
 const materialSelectEl = document.getElementById('material-select');
+const layerButton = document.getElementById('layer-button');
+const layerMenu = document.getElementById('layer-menu');
+const layerHeatToggle = document.getElementById('layer-heat');
+const layerVectorToggle = document.getElementById('layer-vector');
+const layerAttackToggle = document.getElementById('layer-attack');
+const layerSupportToggle = document.getElementById('layer-support');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const blackMoveBtn = document.getElementById('black-move-btn');
@@ -142,6 +148,8 @@ const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
   showVectors: persistedSettings.showVectors ?? false,
+  showAttackLayer: true,
+  showSupportLayer: true,
   viewMode: '2d',
   hoverIdx: null,
   movableSquares: new Set(),
@@ -197,9 +205,16 @@ function attachControls() {
   const flipBtn = document.getElementById('flip-btn');
   const heatToggle = document.getElementById('heat-toggle');
   const vectorToggle = document.getElementById('vector-toggle');
+  const syncLayerControls = () => {
+    if (layerHeatToggle) layerHeatToggle.checked = ui.showHeat;
+    if (layerVectorToggle) layerVectorToggle.checked = ui.showVectors;
+    if (layerAttackToggle) layerAttackToggle.checked = ui.showAttackLayer;
+    if (layerSupportToggle) layerSupportToggle.checked = ui.showSupportLayer;
+  };
 
   heatToggle.checked = ui.showHeat;
   vectorToggle.checked = ui.showVectors;
+  syncLayerControls();
 
   resetBtn.addEventListener('click', () => {
     loadScenario(currentScenario);
@@ -230,15 +245,66 @@ function attachControls() {
 
   heatToggle.addEventListener('change', (e) => {
     ui.showHeat = e.target.checked;
+    syncLayerControls();
     persistSettings();
     render();
   });
 
   vectorToggle.addEventListener('change', (e) => {
     ui.showVectors = e.target.checked;
+    syncLayerControls();
     persistSettings();
     render();
   });
+
+  if (layerHeatToggle) {
+    layerHeatToggle.addEventListener('change', (e) => {
+      ui.showHeat = e.target.checked;
+      if (heatToggle.checked !== ui.showHeat) {
+        heatToggle.checked = ui.showHeat;
+      }
+      persistSettings();
+      render();
+    });
+  }
+
+  if (layerVectorToggle) {
+    layerVectorToggle.addEventListener('change', (e) => {
+      ui.showVectors = e.target.checked;
+      if (vectorToggle.checked !== ui.showVectors) {
+        vectorToggle.checked = ui.showVectors;
+      }
+      persistSettings();
+      render();
+    });
+  }
+
+  if (layerAttackToggle) {
+    layerAttackToggle.addEventListener('change', (e) => {
+      ui.showAttackLayer = e.target.checked;
+      render();
+    });
+  }
+
+  if (layerSupportToggle) {
+    layerSupportToggle.addEventListener('change', (e) => {
+      ui.showSupportLayer = e.target.checked;
+      render();
+    });
+  }
+
+  if (layerButton && layerMenu) {
+    layerButton.addEventListener('click', (event) => {
+      event.stopPropagation();
+      layerMenu.classList.toggle('hidden');
+    });
+    document.addEventListener('click', (event) => {
+      if (layerMenu.classList.contains('hidden')) return;
+      if (!layerMenu.contains(event.target) && event.target !== layerButton) {
+        layerMenu.classList.add('hidden');
+      }
+    });
+  }
 }
 
 function attachPointerEvents() {
