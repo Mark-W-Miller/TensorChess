@@ -5,6 +5,13 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 
 const SQUARE_SIZE = 1;
 const BOARD_OFFSET = (8 * SQUARE_SIZE) / 2;
+const SAFE_COLOR = { r: 13 / 255, g: 148 / 255, b: 136 / 255 };
+const HOT_COLOR = { r: 239 / 255, g: 68 / 255, b: 68 / 255 };
+const HEAT_MIN_VALUE = 0.02;
+const HEAT_BASE_OFFSET = 0.012;
+const HEAT_MIN_HEIGHT = 0.12;
+const HEAT_HEIGHT_SCALE = 3.8;
+const HEAT_EDGE_BLEND = 0.6;
 
 const BOARD_MODEL_PATH = '/OBJ/GEO_ChessBoard.obj';
 
@@ -32,6 +39,19 @@ const mtlLoader = new MTLLoader();
 mtlLoader.setResourcePath('/Textures/');
 const modelCache = new Map();
 const pendingLoads = new Map();
+const heatGeometry = new THREE.CylinderGeometry(0.2, 0.5, 1, 4, 1, false);
+heatGeometry.computeVertexNormals();
+const heatMeshes = new Array(64).fill(null);
+const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
+  color: 0xffffff,
+  transparent: true,
+  opacity: 0.45,
+  roughness: 0.35,
+  metalness: 0.05,
+  transmission: 0.35,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
 let requestRelayout = () => {};
@@ -69,11 +89,15 @@ export function initBoard3D(container) {
 
   const pieceGroup = new THREE.Group();
   scene.add(pieceGroup);
+  const heatGroup = new THREE.Group();
+  heatGroup.renderOrder = 20;
+  scene.add(heatGroup);
   let updateToken = 0;
   let lastBoardState = null;
+  let lastBoardOptions = null;
   requestRelayout = () => {
     if (lastBoardState) {
-      updateBoard(lastBoardState);
+      updateBoard(lastBoardState, lastBoardOptions);
     }
   };
 
@@ -83,9 +107,10 @@ export function initBoard3D(container) {
   }
   animate();
 
-  function updateBoard(board) {
+  function updateBoard(board, options = {}) {
     if (!board) return;
     lastBoardState = board;
+    lastBoardOptions = options;
     const token = ++updateToken;
     while (pieceGroup.children.length) {
       const child = pieceGroup.children.pop();
@@ -112,6 +137,12 @@ export function initBoard3D(container) {
           pieceGroup.add(mesh);
         })
         .catch(() => {});
+    });
+    updateHeatVolumes({
+      group: heatGroup,
+      heatValues: options.heatValues,
+      showHeat: options.showHeat,
+      baseScale: options.heatBaseScale,
     });
   }
 
@@ -197,6 +228,116 @@ function centerMesh(mesh) {
   const bounds = new THREE.Box3().setFromObject(mesh);
   const center = bounds.getCenter(new THREE.Vector3());
   mesh.position.sub(center);
+}
+
+function updateHeatVolumes({ group, heatValues, showHeat, baseScale }) {
+  if (!group) return;
+  const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
+  const active = Boolean(showHeat && hasValues);
+  group.visible = active;
+  for (let i = 0; i < heatMeshes.length; i++) {
+    if (heatMeshes[i]) {
+      heatMeshes[i].visible = false;
+    }
+  }
+  if (!active) {
+    return;
+  }
+  const unit = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ);
+  const normalizedScale = clampHeatBaseScale(baseScale ?? 1);
+  const baseOffset = unit * HEAT_BASE_OFFSET;
+  const minHeight = unit * HEAT_MIN_HEIGHT;
+  const heightScale = unit * HEAT_HEIGHT_SCALE;
+  const scaleX = boardMetrics.squareSizeX * normalizedScale;
+  const scaleZ = boardMetrics.squareSizeZ * normalizedScale;
+  for (let idx = 0; idx < 64; idx++) {
+    const value = clampUnit(heatValues[idx] ?? 0);
+    if (value <= HEAT_MIN_VALUE) continue;
+    const mesh = ensureHeatMesh(idx, group);
+    if (!mesh) continue;
+    const neighborAvg = computeNeighborAverage(idx, heatValues);
+    const edgeValue = Number.isFinite(neighborAvg)
+      ? clampUnit(HEAT_EDGE_BLEND * neighborAvg + (1 - HEAT_EDGE_BLEND) * value)
+      : value;
+    const centerHeight = minHeight + value * heightScale;
+    const shoulderHeight = (minHeight * 0.6) + edgeValue * heightScale * 0.85;
+    const topHeight = Math.max(centerHeight, shoulderHeight + unit * 0.05);
+    const bottomHeight = Math.max(0, Math.min(centerHeight, shoulderHeight * 0.85));
+    const height = Math.max(minHeight * 0.7, topHeight - bottomHeight);
+    const { file, rank } = idxToCoord(idx);
+    const x = boardMetrics.startX + file * boardMetrics.squareSizeX;
+    const z = boardMetrics.startZ + rank * boardMetrics.squareSizeZ;
+    mesh.visible = true;
+    mesh.scale.set(scaleX, height, scaleZ);
+    mesh.position.set(x, boardMetrics.surfaceY + baseOffset + height / 2, z);
+    applyHeatColor(mesh.material, value);
+  }
+}
+
+function ensureHeatMesh(idx, group) {
+  if (heatMeshes[idx]) {
+    return heatMeshes[idx];
+  }
+  const material = HEAT_MATERIAL_TEMPLATE.clone();
+  const mesh = new THREE.Mesh(heatGeometry, material);
+  mesh.rotation.y = Math.PI / 4;
+  mesh.renderOrder = 25;
+  heatMeshes[idx] = mesh;
+  group.add(mesh);
+  return mesh;
+}
+
+function computeNeighborAverage(idx, heatValues) {
+  const neighbors = [];
+  const file = idx % 8;
+  const rank = Math.floor(idx / 8);
+  for (let dr = -1; dr <= 1; dr++) {
+    for (let df = -1; df <= 1; df++) {
+      if (dr === 0 && df === 0) continue;
+      const f = file + df;
+      const r = rank + dr;
+      if (f < 0 || f > 7 || r < 0 || r > 7) continue;
+      const neighborIdx = r * 8 + f;
+      const val = heatValues[neighborIdx];
+      if (typeof val === 'number') {
+        neighbors.push(val);
+      }
+    }
+  }
+  if (!neighbors.length) return null;
+  return neighbors.reduce((sum, val) => sum + val, 0) / neighbors.length;
+}
+
+function applyHeatColor(material, value) {
+  if (!material) return;
+  const clamped = clampUnit(value);
+  const r = SAFE_COLOR.r + (HOT_COLOR.r - SAFE_COLOR.r) * clamped;
+  const g = SAFE_COLOR.g + (HOT_COLOR.g - SAFE_COLOR.g) * clamped;
+  const b = SAFE_COLOR.b + (HOT_COLOR.b - SAFE_COLOR.b) * clamped;
+  material.color.setRGB(r, g, b);
+  material.emissive.setRGB(r * 0.2, g * 0.2, b * 0.2);
+  material.opacity = 0.35 + clamped * 0.25;
+}
+
+function clampUnit(value) {
+  if (!Number.isFinite(value)) return 0;
+  if (value < 0) return 0;
+  if (value > 1) return 1;
+  return value;
+}
+
+function clampHeatBaseScale(value) {
+  if (!Number.isFinite(value)) return 1;
+  if (value < 0.5) return 0.5;
+  if (value > 1.5) return 1.5;
+  return value;
+}
+
+function idxToCoord(idx) {
+  return {
+    file: idx % 8,
+    rank: Math.floor(idx / 8),
+  };
 }
 
 function createBoardMetrics(width, depth, surfaceY, borderX = 0, borderZ = 0) {

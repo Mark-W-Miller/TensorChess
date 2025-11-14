@@ -39,6 +39,10 @@ const layerHeatToggle = document.getElementById('layer-heat');
 const layerVectorToggle = document.getElementById('layer-vector');
 const layerAttackToggle = document.getElementById('layer-attack');
 const layerSupportToggle = document.getElementById('layer-support');
+const boardHudEl = document.getElementById('board3d-hud');
+const boardHudToggle = document.getElementById('board3d-hud-toggle');
+const heatBaseSlider = document.getElementById('heat-base-slider');
+const heatBaseValueEl = document.getElementById('heat-base-value');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const blackMoveBtn = document.getElementById('black-move-btn');
@@ -148,6 +152,7 @@ const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
   showVectors: persistedSettings.showVectors ?? false,
+  heatBaseScale: clampHeatBaseScale(persistedSettings.heatBaseScale ?? 1),
   showAttackLayer: true,
   showSupportLayer: true,
   viewMode: '2d',
@@ -215,6 +220,15 @@ function attachControls() {
   heatToggle.checked = ui.showHeat;
   vectorToggle.checked = ui.showVectors;
   syncLayerControls();
+  const updateHeatBaseControls = () => {
+    if (heatBaseSlider) {
+      heatBaseSlider.value = ui.heatBaseScale.toFixed(2);
+    }
+    if (heatBaseValueEl) {
+      heatBaseValueEl.textContent = `${Math.round(ui.heatBaseScale * 100)}%`;
+    }
+  };
+  updateHeatBaseControls();
 
   resetBtn.addEventListener('click', () => {
     loadScenario(currentScenario);
@@ -303,6 +317,28 @@ function attachControls() {
       if (!layerMenu.contains(event.target) && event.target !== layerButton) {
         layerMenu.classList.add('hidden');
       }
+    });
+  }
+
+  if (heatBaseSlider) {
+    heatBaseSlider.addEventListener('input', (event) => {
+      const nextValue = clampHeatBaseScale(parseFloat(event.target.value));
+      if (!Number.isFinite(nextValue)) return;
+      ui.heatBaseScale = nextValue;
+      updateHeatBaseControls();
+      persistSettings();
+      if (board3d) {
+        board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
+      }
+    });
+  }
+
+  if (boardHudToggle && boardHudEl) {
+    boardHudToggle.addEventListener('click', (event) => {
+      event.stopPropagation();
+      const collapsed = boardHudEl.classList.toggle('collapsed');
+      boardHudToggle.textContent = collapsed ? 'HUD ▸' : 'HUD ▾';
+      boardHudToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     });
   }
 }
@@ -533,7 +569,7 @@ function render() {
   drawKingFlashOverlay(overlayCtx);
 
   if (board3d && ui.viewMode === '3d') {
-    board3d.updateBoard(boardState);
+    board3d.updateBoard(boardState, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
   }
 
   updateBoardStatus(vectorState);
@@ -560,12 +596,18 @@ function persistSettings() {
     flipped: ui.flipped,
     showHeat: ui.showHeat,
     showVectors: ui.showVectors,
+    heatBaseScale: ui.heatBaseScale,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
   } catch (err) {
     // Ignore quota or serialization issues
   }
+}
+
+function clampHeatBaseScale(value) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1.5, Math.max(0.5, value));
 }
 
 function toggleBoardView(shouldRender = true) {
@@ -586,7 +628,7 @@ function setViewMode(mode) {
   ui.viewMode = mode;
   updateViewModeDisplay();
   if (board3d && mode === '3d') {
-    board3d.updateBoard(game.board);
+    board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
   }
   render();
 }
@@ -599,7 +641,7 @@ function updateViewModeDisplay() {
   if (board3d) {
     if (is3D) {
       board3d.show();
-      board3d.updateBoard(game.board);
+      board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
     } else {
       board3d.hide();
     }

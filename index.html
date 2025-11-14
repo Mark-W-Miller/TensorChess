@@ -170,6 +170,57 @@
         box-shadow: 0 10px 40px rgba(15, 23, 42, 0.8);
         overflow: hidden;
         display: none;
+        position: relative;
+      }
+      .board3d-hud {
+        position: absolute;
+        top: 0.75rem;
+        right: 0.75rem;
+        display: flex;
+        flex-direction: column;
+        align-items: flex-end;
+        gap: 0.4rem;
+        pointer-events: none;
+        z-index: 5;
+      }
+      .board3d-hud-toggle {
+        pointer-events: auto;
+        border-radius: 999px;
+        border: 1px solid rgba(248, 250, 252, 0.5);
+        background: rgba(15, 23, 42, 0.65);
+        color: inherit;
+        padding: 0.25rem 0.75rem;
+        font-size: 0.8rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+      }
+      .board3d-hud-body {
+        pointer-events: auto;
+        background: rgba(15, 23, 42, 0.85);
+        border: 1px solid rgba(148, 163, 184, 0.4);
+        border-radius: 12px;
+        padding: 0.75rem;
+        width: 210px;
+        box-shadow: 0 12px 25px rgba(2, 6, 23, 0.8);
+      }
+      .board3d-hud.collapsed .board3d-hud-body {
+        display: none;
+      }
+      .hud-slider {
+        display: flex;
+        flex-direction: column;
+        gap: 0.4rem;
+      }
+      .hud-slider-header {
+        display: flex;
+        justify-content: space-between;
+        font-size: 0.75rem;
+        text-transform: uppercase;
+        letter-spacing: 0.08em;
+        color: #f8fafc;
+      }
+      .hud-slider input[type='range'] {
+        width: 100%;
       }
       .safe-panel {
         width: 100%;
@@ -502,7 +553,20 @@
             <canvas id="board" width="960" height="960"></canvas>
             <canvas id="overlay" width="960" height="960"></canvas>
           </div>
-          <div id="board3d-container"></div>
+          <div id="board3d-container">
+            <div id="board3d-hud" class="board3d-hud">
+              <button id="board3d-hud-toggle" class="board3d-hud-toggle" type="button" aria-expanded="true">HUD ▾</button>
+              <div class="board3d-hud-body">
+                <div class="hud-slider">
+                  <div class="hud-slider-header">
+                    <span>Heat Base</span>
+                    <span id="heat-base-value">100%</span>
+                  </div>
+                  <input id="heat-base-slider" type="range" min="0.6" max="1.4" step="0.02" value="1" aria-label="Heatmap base size" />
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
