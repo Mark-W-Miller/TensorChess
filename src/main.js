@@ -40,8 +40,8 @@ const layerAttackToggle = document.getElementById('layer-attack');
 const layerSupportToggle = document.getElementById('layer-support');
 const boardHudEl = document.getElementById('board3d-hud');
 const boardHudToggle = document.getElementById('board3d-hud-toggle');
-const heatBaseSlider = document.getElementById('heat-base-slider');
-const heatBaseValueEl = document.getElementById('heat-base-value');
+const heatHeightSlider = document.getElementById('heat-height-slider');
+const heatHeightValueEl = document.getElementById('heat-height-value');
 const board2dToggle = document.getElementById('toggle-2d-board');
 const board3dToggle = document.getElementById('toggle-3d-board');
 const perspectiveLabelEl = document.getElementById('perspective-label');
@@ -153,7 +153,7 @@ const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
   showVectors: persistedSettings.showVectors ?? false,
-  heatBaseScale: clampHeatBaseScale(persistedSettings.heatBaseScale ?? 1),
+  heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 1),
   showAttackLayer: true,
   showSupportLayer: true,
   show2dBoard: persistedSettings.show2dBoard ?? true,
@@ -222,15 +222,15 @@ function attachControls() {
   heatToggle.checked = ui.showHeat;
   vectorToggle.checked = ui.showVectors;
   syncLayerControls();
-  const updateHeatBaseControls = () => {
-    if (heatBaseSlider) {
-      heatBaseSlider.value = ui.heatBaseScale.toFixed(2);
+  const updateHeatHeightControls = () => {
+    if (heatHeightSlider) {
+      heatHeightSlider.value = ui.heatHeightScale.toFixed(2);
     }
-    if (heatBaseValueEl) {
-      heatBaseValueEl.textContent = `${Math.round(ui.heatBaseScale * 100)}%`;
+    if (heatHeightValueEl) {
+      heatHeightValueEl.textContent = `${Math.round(ui.heatHeightScale * 100)}%`;
     }
   };
-  updateHeatBaseControls();
+  updateHeatHeightControls();
 
   resetBtn.addEventListener('click', () => {
     loadScenario(currentScenario);
@@ -332,15 +332,19 @@ function attachControls() {
     });
   }
 
-  if (heatBaseSlider) {
-    heatBaseSlider.addEventListener('input', (event) => {
-      const nextValue = clampHeatBaseScale(parseFloat(event.target.value));
+  if (heatHeightSlider) {
+    heatHeightSlider.addEventListener('input', (event) => {
+      const nextValue = clampHeatHeightScale(parseFloat(event.target.value));
       if (!Number.isFinite(nextValue)) return;
-      ui.heatBaseScale = nextValue;
-      updateHeatBaseControls();
+      ui.heatHeightScale = nextValue;
+      updateHeatHeightControls();
       persistSettings();
       if (board3d) {
-        board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
+        board3d.updateBoard(game.board, {
+          heatValues,
+          showHeat: ui.showHeat,
+          heatHeightScale: ui.heatHeightScale,
+        });
       }
     });
   }
@@ -597,7 +601,7 @@ function render() {
   drawKingFlashOverlay(overlayCtx);
 
   if (board3d && ui.show3dBoard) {
-    board3d.updateBoard(boardState, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
+    board3d.updateBoard(boardState, { heatValues, showHeat: ui.showHeat, heatHeightScale: ui.heatHeightScale });
   }
 
   updateBoardStatus(vectorState);
@@ -624,7 +628,7 @@ function persistSettings() {
     flipped: ui.flipped,
     showHeat: ui.showHeat,
     showVectors: ui.showVectors,
-    heatBaseScale: ui.heatBaseScale,
+    heatHeightScale: ui.heatHeightScale,
     show2dBoard: ui.show2dBoard,
     show3dBoard: ui.show3dBoard,
   };
@@ -635,9 +639,9 @@ function persistSettings() {
   }
 }
 
-function clampHeatBaseScale(value) {
+function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(1.5, Math.max(0.5, value));
+  return Math.min(1.6, Math.max(0.6, value));
 }
 
 function updateBoardVisibility() {
@@ -655,7 +659,11 @@ function updateBoardVisibility() {
   if (board3d) {
     if (show3d) {
       board3d.show();
-      board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
+      board3d.updateBoard(game.board, {
+        heatValues,
+        showHeat: ui.showHeat,
+        heatHeightScale: ui.heatHeightScale,
+      });
     } else {
       board3d.hide();
     }

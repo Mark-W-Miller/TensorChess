@@ -5,13 +5,14 @@ import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
 
 const SQUARE_SIZE = 1;
 const BOARD_OFFSET = (8 * SQUARE_SIZE) / 2;
-const SAFE_COLOR = { r: 13 / 255, g: 148 / 255, b: 136 / 255 };
+const SAFE_COLOR = { r: 34 / 255, g: 197 / 255, b: 94 / 255 };
 const HOT_COLOR = { r: 239 / 255, g: 68 / 255, b: 68 / 255 };
 const HEAT_MIN_VALUE = 0.02;
 const HEAT_BASE_OFFSET = 0.012;
 const HEAT_MIN_HEIGHT = 0.12;
 const HEAT_HEIGHT_SCALE = 3.8;
 const HEAT_EDGE_BLEND = 0.6;
+const HEAT_BASE_SCALE = 1.4;
 
 const BOARD_MODEL_PATH = '/OBJ/GEO_ChessBoard.obj';
 
@@ -42,6 +43,7 @@ const pendingLoads = new Map();
 const heatGeometry = new THREE.CylinderGeometry(0.2, 0.5, 1, 4, 1, false);
 heatGeometry.computeVertexNormals();
 const heatMeshes = new Array(64).fill(null);
+const EMPTY_HEAT_CELL = { threat: 0, support: 0 };
 const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   color: 0xffffff,
   transparent: true,
@@ -142,7 +144,7 @@ export function initBoard3D(container) {
       group: heatGroup,
       heatValues: options.heatValues,
       showHeat: options.showHeat,
-      baseScale: options.heatBaseScale,
+      heightScale: options.heatHeightScale,
     });
   }
 
@@ -230,7 +232,7 @@ function centerMesh(mesh) {
   mesh.position.sub(center);
 }
 
-function updateHeatVolumes({ group, heatValues, showHeat, baseScale }) {
+function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   if (!group) return;
   const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
   const active = Boolean(showHeat && hasValues);
@@ -244,23 +246,27 @@ function updateHeatVolumes({ group, heatValues, showHeat, baseScale }) {
     return;
   }
   const unit = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ);
-  const normalizedScale = clampHeatBaseScale(baseScale ?? 1);
+  const heightMultiplier = clampHeatHeightScale(heightScale ?? 1);
   const baseOffset = unit * HEAT_BASE_OFFSET;
   const minHeight = unit * HEAT_MIN_HEIGHT;
-  const heightScale = unit * HEAT_HEIGHT_SCALE;
-  const scaleX = boardMetrics.squareSizeX * normalizedScale;
-  const scaleZ = boardMetrics.squareSizeZ * normalizedScale;
+  const scaledHeight = unit * HEAT_HEIGHT_SCALE * heightMultiplier;
+  const scaleX = boardMetrics.squareSizeX * HEAT_BASE_SCALE;
+  const scaleZ = boardMetrics.squareSizeZ * HEAT_BASE_SCALE;
+  const { maxThreat, maxSupport } = getHeatExtents(heatValues);
   for (let idx = 0; idx < 64; idx++) {
-    const value = clampUnit(heatValues[idx] ?? 0);
+    const cell = heatValues[idx] ?? EMPTY_HEAT_CELL;
+    const threatIntensity = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
+    const supportIntensity = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
+    const value = Math.max(threatIntensity, supportIntensity);
     if (value <= HEAT_MIN_VALUE) continue;
     const mesh = ensureHeatMesh(idx, group);
     if (!mesh) continue;
-    const neighborAvg = computeNeighborAverage(idx, heatValues);
+    const neighborAvg = computeNeighborAverage(idx, heatValues, maxThreat, maxSupport);
     const edgeValue = Number.isFinite(neighborAvg)
       ? clampUnit(HEAT_EDGE_BLEND * neighborAvg + (1 - HEAT_EDGE_BLEND) * value)
       : value;
-    const centerHeight = minHeight + value * heightScale;
-    const shoulderHeight = (minHeight * 0.6) + edgeValue * heightScale * 0.85;
+    const centerHeight = minHeight + value * scaledHeight;
+    const shoulderHeight = (minHeight * 0.6) + edgeValue * scaledHeight * 0.85;
     const topHeight = Math.max(centerHeight, shoulderHeight + unit * 0.05);
     const bottomHeight = Math.max(0, Math.min(centerHeight, shoulderHeight * 0.85));
     const height = Math.max(minHeight * 0.7, topHeight - bottomHeight);
@@ -270,7 +276,7 @@ function updateHeatVolumes({ group, heatValues, showHeat, baseScale }) {
     mesh.visible = true;
     mesh.scale.set(scaleX, height, scaleZ);
     mesh.position.set(x, boardMetrics.surfaceY + baseOffset + height / 2, z);
-    applyHeatColor(mesh.material, value);
+    applyHeatColor(mesh.material, threatIntensity, supportIntensity);
   }
 }
 
@@ -287,7 +293,7 @@ function ensureHeatMesh(idx, group) {
   return mesh;
 }
 
-function computeNeighborAverage(idx, heatValues) {
+function computeNeighborAverage(idx, heatValues, maxThreat, maxSupport) {
   const neighbors = [];
   const file = idx % 8;
   const rank = Math.floor(idx / 8);
@@ -299,8 +305,10 @@ function computeNeighborAverage(idx, heatValues) {
       if (f < 0 || f > 7 || r < 0 || r > 7) continue;
       const neighborIdx = r * 8 + f;
       const val = heatValues[neighborIdx];
-      if (typeof val === 'number') {
-        neighbors.push(val);
+      if (val && (val.threat > 0 || val.support > 0)) {
+        const t = maxThreat > 0 ? clampUnit((val.threat ?? 0) / maxThreat) : 0;
+        const s = maxSupport > 0 ? clampUnit((val.support ?? 0) / maxSupport) : 0;
+        neighbors.push(Math.max(t, s));
       }
     }
   }
@@ -308,15 +316,32 @@ function computeNeighborAverage(idx, heatValues) {
   return neighbors.reduce((sum, val) => sum + val, 0) / neighbors.length;
 }
 
-function applyHeatColor(material, value) {
+function getHeatExtents(heatValues) {
+  let maxThreat = 0;
+  let maxSupport = 0;
+  heatValues.forEach((cell) => {
+    if (!cell) return;
+    if ((cell.threat ?? 0) > maxThreat) maxThreat = cell.threat;
+    if ((cell.support ?? 0) > maxSupport) maxSupport = cell.support;
+  });
+  return {
+    maxThreat,
+    maxSupport,
+  };
+}
+
+function applyHeatColor(material, threatIntensity, supportIntensity) {
   if (!material) return;
-  const clamped = clampUnit(value);
-  const r = SAFE_COLOR.r + (HOT_COLOR.r - SAFE_COLOR.r) * clamped;
-  const g = SAFE_COLOR.g + (HOT_COLOR.g - SAFE_COLOR.g) * clamped;
-  const b = SAFE_COLOR.b + (HOT_COLOR.b - SAFE_COLOR.b) * clamped;
+  const dominance = threatIntensity >= supportIntensity ? 'threat' : 'support';
+  const intensity = dominance === 'threat' ? threatIntensity : supportIntensity;
+  const target = dominance === 'threat' ? HOT_COLOR : SAFE_COLOR;
+  const tone = 0.5 + intensity * 0.5;
+  const r = clampUnit(target.r * tone);
+  const g = clampUnit(target.g * tone);
+  const b = clampUnit(target.b * tone);
   material.color.setRGB(r, g, b);
-  material.emissive.setRGB(r * 0.2, g * 0.2, b * 0.2);
-  material.opacity = 0.35 + clamped * 0.25;
+  material.emissive.setRGB(r * 0.25, g * 0.25, b * 0.25);
+  material.opacity = 0.3 + intensity * 0.45;
 }
 
 function clampUnit(value) {
@@ -326,10 +351,10 @@ function clampUnit(value) {
   return value;
 }
 
-function clampHeatBaseScale(value) {
+function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
-  if (value < 0.5) return 0.5;
-  if (value > 1.5) return 1.5;
+  if (value < 0.6) return 0.6;
+  if (value > 1.6) return 1.6;
   return value;
 }
 
