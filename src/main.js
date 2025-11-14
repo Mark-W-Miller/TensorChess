@@ -7,6 +7,7 @@ import {
   evaluateBoard,
   simulateMove,
   getKingSquare,
+  getAttackMap,
 } from './model/chess.js';
 import {
   drawBoard,
@@ -28,6 +29,8 @@ const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
+const whiteCapturedEl = document.getElementById('white-captured');
+const blackCapturedEl = document.getElementById('black-captured');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const actionBarEl = document.getElementById('action-bar');
@@ -48,6 +51,16 @@ const AUTO_PIECE_VALUE = {
   Q: 9,
   K: 100,
 };
+const THREAT_PIECE_VALUE = {
+  P: 1,
+  N: 3,
+  B: 3,
+  R: 5,
+  Q: 9,
+  K: 12,
+};
+const PIECE_TYPES = ['P', 'N', 'B', 'R', 'Q', 'K'];
+const CAPTURE_ORDER = ['Q', 'R', 'B', 'N', 'P'];
 
 const SCENARIOS = [
   {
@@ -118,7 +131,6 @@ const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
   showVectors: persistedSettings.showVectors ?? false,
-  autoFlip: persistedSettings.autoFlip ?? false,
   hoverIdx: null,
   movableSquares: new Set(),
   selected: null,
@@ -153,8 +165,10 @@ const drag = {
 };
 
 const playerUndoStack = [];
-let pendingBlackResponse = null;
+let pendingAutoResponse = null;
 let actionBarVisible = false;
+let playerColor = ui.flipped ? 'b' : 'w';
+let baselinePieces = countPieces(game.board);
 
 let heatValues = computeHeat(game);
 const analysisEntries = [];
@@ -163,15 +177,17 @@ renderScenarioList();
 attachPointerEvents();
 attachActionControls();
 updateActionButtons();
+baselinePieces = countPieces(game.board);
+renderCapturedPieces();
+prepareAutoResponseOptions();
 render();
 
 function attachControls() {
   const resetBtn = document.getElementById('reset-btn');
-  const flipToggle = document.getElementById('flip-toggle');
+  const flipBtn = document.getElementById('flip-btn');
   const heatToggle = document.getElementById('heat-toggle');
   const vectorToggle = document.getElementById('vector-toggle');
 
-  flipToggle.checked = ui.autoFlip;
   heatToggle.checked = ui.showHeat;
   vectorToggle.checked = ui.showVectors;
 
@@ -179,15 +195,11 @@ function attachControls() {
     loadScenario(currentScenario);
   });
 
-  flipToggle.addEventListener('change', (e) => {
-    ui.autoFlip = e.target.checked;
-    if (ui.autoFlip) {
-      // Start by orienting from the current mover's perspective.
-      ui.flipped = game.turn === 'b';
-    }
-    persistSettings();
-    render();
-  });
+  if (flipBtn) {
+    flipBtn.addEventListener('click', () => {
+      toggleBoardView();
+    });
+  }
 
   heatToggle.addEventListener('change', (e) => {
     ui.showHeat = e.target.checked;
@@ -281,10 +293,10 @@ function attachPointerEvents() {
       boardCanvas.style.cursor = 'default';
     }
   });
-
-  boardCanvas.addEventListener('dblclick', (event) => {
-    event.preventDefault();
-    toggleBoardView();
+  
+  boardCanvas.addEventListener('pointerup', (event) => {
+    if (drag.active || event.defaultPrevented) return;
+    commitLastMoveVisuals();
   });
 }
 
@@ -348,18 +360,16 @@ function handleDrop(idx) {
     ui.movableSquares = collectMovableSquares(game);
     ui.checkmatedColor = detectCheckmate(game);
     appendAnalysisEntry({
-      actor: 'White',
+      actor: playerColor === 'w' ? 'White' : 'Black',
       description: describeMove(execMove),
     });
-    if (ui.autoFlip) {
-      toggleBoardView(false);
-    }
-    pendingBlackResponse = null;
-    prepareBlackResponseOptions();
+    pendingAutoResponse = null;
+    prepareAutoResponseOptions();
   } else {
     ui.checkmatedColor = detectCheckmate(game);
   }
   heatValues = computeHeat(game);
+  renderCapturedPieces();
   clearPromotionCandidate();
   endDrag();
 }
@@ -398,16 +408,18 @@ function render() {
   const vectorState = previewState ?? game;
   const movableSquares = previewState ? collectMovableSquares(vectorState) : ui.movableSquares;
   const checkmatedColor = previewState ? detectCheckmate(vectorState) : ui.checkmatedColor;
+  const threatLevels = computeThreatLevels(vectorState.board);
   drawBoard(boardCtx, {
     board: boardState,
     flipped: ui.flipped,
     selected: ui.selected,
     legalTargets: ui.legalTargets,
-    lastMove: game.lastMove,
+    lastMove: vectorState.lastMove ?? game.lastMove,
     dragFrom: drag.active ? drag.from : null,
     hoverIdx: drag.active ? null : ui.hoverIdx,
     movableSquares,
     checkmatedColor,
+    threatLevels,
   });
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
@@ -451,7 +463,6 @@ function persistSettings() {
     flipped: ui.flipped,
     showHeat: ui.showHeat,
     showVectors: ui.showVectors,
-    autoFlip: ui.autoFlip,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -462,6 +473,10 @@ function persistSettings() {
 
 function toggleBoardView(shouldRender = true) {
   ui.flipped = !ui.flipped;
+  playerColor = ui.flipped ? 'b' : 'w';
+  pendingAutoResponse = null;
+  updateActionButtons();
+  prepareAutoResponseOptions();
   persistSettings();
   if (shouldRender) {
     render();
@@ -482,6 +497,8 @@ function collectMovableSquares(state) {
 function renderScenarioList() {
   if (!scenarioListEl) return;
   scenarioListEl.innerHTML = '';
+  baselinePieces = countPieces(game.board);
+  renderCapturedPieces();
   SCENARIOS.forEach((scenario) => {
     const btn = document.createElement('button');
     btn.className = 'scenario-btn';
@@ -508,7 +525,7 @@ function loadScenario(scenario) {
   currentScenario = scenario;
   game = createInitialState(scenario.fen);
   playerUndoStack.length = 0;
-  pendingBlackResponse = null;
+  pendingAutoResponse = null;
   heatValues = computeHeat(game);
   drag.active = false;
   drag.from = null;
@@ -537,6 +554,10 @@ function loadScenario(scenario) {
   saveScenarioSelection();
   hideActionBar();
   updateActionButtons();
+  playerColor = ui.flipped ? 'b' : 'w';
+  baselinePieces = countPieces(game.board);
+  renderCapturedPieces();
+  prepareAutoResponseOptions();
   render();
 }
 
@@ -569,9 +590,10 @@ function saveScenarioSelection() {
 
 function updateFitnessDisplay(state) {
   if (!fitnessEl || !fitnessEquationEl || !state) return;
-  const score = evaluateBoard(state, 'w');
-  fitnessEl.textContent = `Board Fitness: ${score.toFixed(2)}`;
-  fitnessEquationEl.textContent = 'Fitness = (Material + Mobility - Threat)_White - (Material + Mobility - Threat)_Black';
+  const score = evaluateBoard(state, playerColor);
+  const perspective = playerColor === 'w' ? 'White' : 'Black';
+  fitnessEl.textContent = `Board Fitness (${perspective}): ${score.toFixed(2)}`;
+  fitnessEquationEl.textContent = `Fitness (${perspective}) = Advantage_${perspective} - Advantage_${perspective === 'w' ? 'Black' : 'White'}`;
 }
 
 function updateBoardStatus(state) {
@@ -594,27 +616,130 @@ function updateBoardStatus(state) {
   boardStatusDetailEl.textContent = `Turn: ${actor} to move`;
 }
 
+function computeThreatLevels(board) {
+  const levels = new Array(64).fill(0);
+  if (!board) return levels;
+  const whiteThreat = getAttackMap(board, 'b');
+  const blackThreat = getAttackMap(board, 'w');
+  board.forEach((piece, idx) => {
+    if (!piece) return;
+    const attacks = piece[0] === 'w' ? whiteThreat[idx] : blackThreat[idx];
+    if (!attacks) return;
+    const value = THREAT_PIECE_VALUE[piece[1]] || 1;
+    const normalized = Math.min(1, (attacks * value) / 9);
+    levels[idx] = normalized;
+  });
+  return levels;
+}
+
+function commitLastMoveVisuals() {
+  if (drag.active) return;
+  let changed = false;
+  if (game.lastMove) {
+    game = { ...game, lastMove: null };
+    changed = true;
+  }
+  if (drag.previewState && drag.previewState.lastMove) {
+    drag.previewState = { ...drag.previewState, lastMove: null };
+    changed = true;
+  }
+  if (drag.previewBaseState && drag.previewBaseState.lastMove) {
+    drag.previewBaseState = { ...drag.previewBaseState, lastMove: null };
+  }
+  if (changed) {
+    render();
+  }
+}
+
+function renderCapturedPieces(board = game.board) {
+  if (!whiteCapturedEl || !blackCapturedEl || !baselinePieces) return;
+  const captured = getCapturedPieces(board);
+  renderCapturedRow(whiteCapturedEl, captured.w, 'w');
+  renderCapturedRow(blackCapturedEl, captured.b, 'b');
+}
+
+function getCapturedPieces(board) {
+  const result = { w: [], b: [] };
+  if (!board) return result;
+  const currentCounts = countPieces(board);
+  ['w', 'b'].forEach((color) => {
+    CAPTURE_ORDER.forEach((type) => {
+      const baselineCount = baselinePieces[color]?.[type] ?? 0;
+      const currentCount = currentCounts[color]?.[type] ?? 0;
+      const missing = Math.max(0, baselineCount - currentCount);
+      for (let i = 0; i < missing; i += 1) {
+        result[color].push(type);
+      }
+    });
+  });
+  return result;
+}
+
+function renderCapturedRow(container, pieces, color) {
+  if (!container) return;
+  const fragment = document.createDocumentFragment();
+  pieces.forEach((type) => {
+    const span = document.createElement('span');
+    span.className = `captured-piece captured-piece--${color === 'w' ? 'white' : 'black'}`;
+    span.textContent = type;
+    fragment.appendChild(span);
+  });
+  container.innerHTML = '';
+  if (pieces.length === 0) {
+    const placeholder = document.createElement('span');
+    placeholder.className = 'captured-placeholder';
+    placeholder.textContent = color === 'w' ? 'White safe' : 'Black safe';
+    container.appendChild(placeholder);
+  } else {
+    container.appendChild(fragment);
+  }
+}
+
+function countPieces(board) {
+  const initCounts = () => {
+    const map = {};
+    PIECE_TYPES.forEach((type) => {
+      map[type] = 0;
+    });
+    return map;
+  };
+  const counts = {
+    w: initCounts(),
+    b: initCounts(),
+  };
+  board.forEach((piece) => {
+    if (!piece) return;
+    const color = piece[0];
+    const type = piece[1];
+    if (!counts[color]) counts[color] = initCounts();
+    counts[color][type] = (counts[color][type] || 0) + 1;
+  });
+  return counts;
+}
+
 function attachActionControls() {
   if (blackMoveBtn) {
-    blackMoveBtn.addEventListener('click', handleBlackMoveClick);
+    blackMoveBtn.addEventListener('click', handleAutoMoveClick);
   }
   if (backsyBtn) {
     backsyBtn.addEventListener('click', handleBacksyClick);
   }
 }
 
-function prepareBlackResponseOptions() {
-  if (game.turn !== 'b') {
-    pendingBlackResponse = null;
+function prepareAutoResponseOptions() {
+  const opponentColor = playerColor === 'w' ? 'b' : 'w';
+  if (game.turn !== opponentColor) {
+    pendingAutoResponse = null;
     updateActionButtons();
     return;
   }
   const baseState = cloneState(game);
-  const moves = collectAutoMoves(baseState, 'b');
-  pendingBlackResponse = {
+  const moves = collectAutoMoves(baseState, opponentColor);
+  pendingAutoResponse = {
     baseState,
     moves,
     index: 0,
+    color: opponentColor,
   };
   revealActionBar();
   updateActionButtons();
@@ -633,12 +758,15 @@ function hideActionBar() {
 }
 
 function updateActionButtons() {
+  const opponentColor = playerColor === 'w' ? 'b' : 'w';
   if (blackMoveBtn) {
-    const canMoveBlack = Boolean(pendingBlackResponse && pendingBlackResponse.moves.length);
-    blackMoveBtn.disabled = !canMoveBlack;
+    const canMove = Boolean(pendingAutoResponse && pendingAutoResponse.moves.length);
+    blackMoveBtn.disabled = !canMove;
+    blackMoveBtn.textContent = `${opponentColor === 'w' ? 'White' : 'Black'} Move`;
   }
   if (backsyBtn) {
     backsyBtn.disabled = playerUndoStack.length === 0;
+    backsyBtn.textContent = `Backsy (${playerColor === 'w' ? 'White' : 'Black'})`;
   }
 }
 
@@ -670,6 +798,11 @@ function computePromotionOptions(move) {
     const marginX = radius + 4;
     x = Math.max(marginX, Math.min(BOARD_SIZE - marginX, x));
     return { piece, x, y, radius };
+  });
+
+  boardCanvas.addEventListener('click', () => {
+    if (drag.active) return;
+    commitLastMoveVisuals();
   });
 }
 
@@ -708,21 +841,26 @@ function drawPromotionOptions(ctx) {
   });
 }
 
-function handleBlackMoveClick() {
-  if (!pendingBlackResponse || !pendingBlackResponse.moves.length) return;
-  const { baseState, moves } = pendingBlackResponse;
-  const move = moves[pendingBlackResponse.index];
+function handleAutoMoveClick() {
+  if (!pendingAutoResponse || !pendingAutoResponse.moves.length) return;
+  const { baseState, moves, color } = pendingAutoResponse;
+  const move = moves[pendingAutoResponse.index];
   const nextState = simulateMove(baseState, move);
   game = nextState;
   ui.movableSquares = collectMovableSquares(game);
   ui.checkmatedColor = detectCheckmate(game);
   heatValues = computeHeat(game);
+  renderCapturedPieces();
   appendAnalysisEntry({
-    actor: 'Black',
+    actor: color === 'w' ? 'White' : 'Black',
     description: describeAutoDecision(move),
   });
   triggerKingFlashIfNeeded(move);
-  pendingBlackResponse.index = (pendingBlackResponse.index + 1) % moves.length;
+  pendingAutoResponse.index = (pendingAutoResponse.index + 1) % moves.length;
+  if (game.turn !== color) {
+    pendingAutoResponse = null;
+    prepareAutoResponseOptions();
+  }
   render();
 }
 
@@ -730,7 +868,7 @@ function handleBacksyClick() {
   if (!playerUndoStack.length) return;
   const snapshot = playerUndoStack.pop();
   if (!snapshot) return;
-  pendingBlackResponse = null;
+  pendingAutoResponse = null;
   game = cloneState(snapshot);
   ui.checkmatedColor = detectCheckmate(game);
   heatValues = computeHeat(game);
@@ -753,7 +891,8 @@ function handleBacksyClick() {
   ui.hoverIdx = null;
   ui.movableSquares = collectMovableSquares(game);
   clearKingFlash();
-  updateActionButtons();
+  renderCapturedPieces();
+  prepareAutoResponseOptions();
   render();
 }
 
@@ -773,14 +912,16 @@ function drawKingFlashOverlay(ctx) {
 function scheduleAutoSequence() {
   cancelAutoSequence({ revertPreview: false, clearBase: false });
   if (!drag.previewBaseState || drag.currentPromotionMove) return;
-  if (drag.previewBaseState.turn !== 'b') return;
+  const opponentColor = playerColor === 'w' ? 'b' : 'w';
+  if (drag.previewBaseState.turn !== opponentColor) return;
   drag.hoverTimerId = setTimeout(startAutoSequence, AUTO_HOVER_DELAY);
 }
 
 function startAutoSequence() {
   drag.hoverTimerId = null;
-  if (!drag.previewBaseState || drag.previewBaseState.turn !== 'b') return;
-  const moves = collectAutoMoves(drag.previewBaseState, 'b');
+  const opponentColor = playerColor === 'w' ? 'b' : 'w';
+  if (!drag.previewBaseState || drag.previewBaseState.turn !== opponentColor) return;
+  const moves = collectAutoMoves(drag.previewBaseState, opponentColor);
   if (!moves.length) return;
   drag.autoSequence = { moves, index: 0 };
   applyAutoMove();
@@ -793,9 +934,9 @@ function applyAutoMove() {
   drag.previewPiece = move.promotion ? move.piece[0] + move.promotion : move.piece;
   drag.snapPoint = squareCenter(move.to, ui.flipped);
   const matedColor = detectCheckmate(drag.previewState);
-  if (matedColor === 'w') {
+  if (matedColor) {
     cancelAutoSequence({ revertPreview: false, clearBase: false, clearHover: false });
-    triggerKingFlash(drag.previewState, 'w');
+    triggerKingFlash(drag.previewState, matedColor);
     render();
     return;
   }
@@ -817,7 +958,7 @@ function collectAutoMoves(state, color) {
       const nextState = simulateMove(colorState, move);
       const evalScore = evaluateBoard(nextState, color);
       const pieceValue = AUTO_PIECE_VALUE[piece[1]] || 0;
-      const mates = detectCheckmate(nextState) === 'w';
+      const mates = detectCheckmate(nextState) === (color === 'w' ? 'b' : 'w');
       moves.push({
         move,
         evalScore,

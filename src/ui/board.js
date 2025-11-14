@@ -15,6 +15,8 @@ const PIECE_STROKE = {
   w: '#3b82f6', // blue outline for white pieces
   b: '#ef4444', // red outline for black pieces
 };
+const ARROW_STROKE = 'rgba(251, 191, 36, 0.95)';
+const ARROW_SHADOW = 'rgba(15, 23, 42, 0.35)';
 
 const PIECE_LETTERS = {
   P: 'P',
@@ -41,6 +43,7 @@ export function drawBoard(ctx, {
   hoverIdx = null,
   movableSquares = new Set(),
   checkmatedColor = null,
+  threatLevels = [],
 }) {
   ctx.clearRect(0, 0, BOARD_SIZE, BOARD_SIZE);
   drawTiles(ctx, flipped);
@@ -53,7 +56,9 @@ export function drawBoard(ctx, {
     highlightSquare(ctx, selected, flipped, SELECT_COLOR);
   }
   drawLegalTargets(ctx, legalTargets, flipped);
-  drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor);
+  drawMoveArrow(ctx, lastMove, flipped);
+  drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor, threatLevels);
+  drawLastMoveGhost(ctx, lastMove, flipped);
   drawCoordinates(ctx, flipped);
 }
 
@@ -116,7 +121,7 @@ function drawMovableSquares(ctx, squares, flipped) {
   });
 }
 
-function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor) {
+function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, checkmatedColor, threatLevels = []) {
   board.forEach((piece, idx) => {
     if (!piece) return;
     if (dragFrom === idx) return; // Drawn as ghost while dragging
@@ -128,12 +133,93 @@ function drawPieces(ctx, board, flipped, dragFrom, hoverIdx, movableSquares, che
       drawMatedKing(ctx, centerX, centerY);
       return;
     }
+    drawThreatRing(ctx, centerX, centerY, threatLevels[idx] || 0);
     renderGlyph(ctx, piece, centerX, centerY, scale);
   });
 }
 
 function renderGlyph(ctx, piece, x, y, scale = 1) {
   drawPieceToken(ctx, piece, x, y, scale);
+}
+
+function drawLastMoveGhost(ctx, move, flipped) {
+  if (!move) return;
+  const { x, y } = squareCenter(move.from, flipped);
+  const ghostPiece = move.promotion ? `${move.piece[0]}${move.promotion}` : move.piece;
+  ctx.save();
+  ctx.globalAlpha = 0.35;
+  drawPieceToken(ctx, ghostPiece, x, y, 1);
+  ctx.restore();
+}
+
+function drawMoveArrow(ctx, move, flipped) {
+  if (!move) return;
+  const start = squareCenter(move.from, flipped);
+  const end = squareCenter(move.to, flipped);
+  const dx = end.x - start.x;
+  const dy = end.y - start.y;
+  const length = Math.hypot(dx, dy);
+  if (length < 1) return;
+  const angle = Math.atan2(dy, dx);
+  const thickness = Math.max(SQUARE_SIZE * 0.18, 18);
+  const pattern = getArrowPattern(ctx);
+
+  ctx.save();
+  ctx.translate(start.x, start.y);
+  ctx.rotate(angle);
+  ctx.shadowColor = ARROW_SHADOW;
+  ctx.shadowBlur = thickness * 0.2;
+  ctx.fillStyle = pattern;
+  ctx.strokeStyle = ARROW_STROKE;
+  ctx.lineWidth = Math.max(2, thickness * 0.15);
+
+  ctx.beginPath();
+  ctx.moveTo(0, -thickness / 2);
+  ctx.lineTo(length - thickness * 0.9, -thickness / 2);
+  ctx.lineTo(length - thickness * 0.9, -thickness);
+  ctx.lineTo(length, 0);
+  ctx.lineTo(length - thickness * 0.9, thickness);
+  ctx.lineTo(length - thickness * 0.9, thickness / 2);
+  ctx.lineTo(0, thickness / 2);
+  ctx.closePath();
+  ctx.fill();
+  ctx.stroke();
+  ctx.restore();
+}
+
+let arrowPatternSource = null;
+
+function getArrowPattern(ctx) {
+  if (!arrowPatternSource) {
+    arrowPatternSource = document.createElement('canvas');
+    arrowPatternSource.width = 16;
+    arrowPatternSource.height = 16;
+    const pctx = arrowPatternSource.getContext('2d');
+    const colors = ['rgba(250, 204, 21, 0.9)', 'rgba(250, 204, 21, 0.4)'];
+    const size = arrowPatternSource.width / 2;
+    pctx.fillStyle = colors[0];
+    pctx.fillRect(0, 0, size, size);
+    pctx.fillRect(size, size, size, size);
+    pctx.fillStyle = colors[1];
+    pctx.fillRect(size, 0, size, size);
+    pctx.fillRect(0, size, size, size);
+  }
+  return ctx.createPattern(arrowPatternSource, 'repeat');
+}
+
+function drawThreatRing(ctx, x, y, intensity) {
+  if (!intensity) return;
+  const radius = BASE_RADIUS * (1.25 + intensity * 0.2);
+  const lineWidth = 3 + intensity * 6;
+  ctx.save();
+  ctx.beginPath();
+  ctx.strokeStyle = `rgba(248, 113, 113, ${0.35 + intensity * 0.6})`;
+  ctx.shadowColor = `rgba(239, 68, 68, ${0.4 + intensity * 0.5})`;
+  ctx.shadowBlur = 12 + intensity * 12;
+  ctx.lineWidth = lineWidth;
+  ctx.arc(x, y, radius, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.restore();
 }
 
 export function coordsToIndex(x, y, flipped) {

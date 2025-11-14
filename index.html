@@ -97,6 +97,53 @@
         width: 800px;
         height: 800px;
       }
+      .captured-row {
+        position: absolute;
+        top: 10px;
+        display: flex;
+        gap: 0.25rem;
+        align-items: center;
+        pointer-events: none;
+        z-index: 2;
+      }
+      .captured-row--left {
+        left: 10px;
+        justify-content: flex-start;
+      }
+      .captured-row--right {
+        right: 10px;
+        justify-content: flex-end;
+      }
+      .captured-piece {
+        width: 30px;
+        height: 30px;
+        border-radius: 999px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-size: 0.85rem;
+        font-weight: 600;
+        border: 1px solid rgba(248, 250, 252, 0.8);
+        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.45);
+      }
+      .captured-piece--white {
+        background: rgba(248, 250, 252, 0.85);
+        color: #0f172a;
+      }
+      .captured-piece--black {
+        background: rgba(15, 23, 42, 0.8);
+        color: #f8fafc;
+      }
+      .captured-placeholder {
+        color: rgba(248, 250, 252, 0.65);
+        font-size: 0.75rem;
+        letter-spacing: 0.04em;
+        text-transform: uppercase;
+        padding: 0.15rem 0.35rem;
+        border-radius: 999px;
+        background: rgba(15, 23, 42, 0.35);
+        border: 1px solid rgba(248, 250, 252, 0.25);
+      }
       .board-status {
         display: flex;
         flex-direction: column;
@@ -247,7 +294,7 @@
     <div class="app">
       <div class="controls">
         <button id="reset-btn">Reset</button>
-        <label><input type="checkbox" id="flip-toggle" /> Auto Flip Board</label>
+        <button id="flip-btn">Flip Board</button>
         <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
         <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
       </div>
@@ -258,6 +305,8 @@
         </aside>
         <div class="board-column">
           <div id="board-wrap">
+            <div id="white-captured" class="captured-row captured-row--left"></div>
+            <div id="black-captured" class="captured-row captured-row--right"></div>
             <canvas id="board" width="800" height="800"></canvas>
             <canvas id="overlay" width="800" height="800"></canvas>
           </div>
