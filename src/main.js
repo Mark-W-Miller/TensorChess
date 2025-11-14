@@ -654,8 +654,8 @@ function commitLastMoveVisuals() {
 function renderCapturedPieces(board = game.board) {
   if (!whiteCapturedEl || !blackCapturedEl || !baselinePieces) return;
   const captured = getCapturedPieces(board);
-  renderCapturedRow(whiteCapturedEl, captured.w, 'w');
-  renderCapturedRow(blackCapturedEl, captured.b, 'b');
+  renderCapturedRow(whiteCapturedEl, captured.w, 'white');
+  renderCapturedRow(blackCapturedEl, captured.b, 'black');
 }
 
 function getCapturedPieces(board) {
@@ -675,24 +675,24 @@ function getCapturedPieces(board) {
   return result;
 }
 
-function renderCapturedRow(container, pieces, color) {
+function renderCapturedRow(container, pieces, colorClass) {
   if (!container) return;
+  container.innerHTML = '';
+  if (!pieces.length) {
+    const empty = document.createElement('div');
+    empty.className = 'capture-empty';
+    empty.textContent = 'Safe';
+    container.appendChild(empty);
+    return;
+  }
   const fragment = document.createDocumentFragment();
   pieces.forEach((type) => {
-    const span = document.createElement('span');
-    span.className = `captured-piece captured-piece--${color === 'w' ? 'white' : 'black'}`;
-    span.textContent = type;
-    fragment.appendChild(span);
+    const pill = document.createElement('span');
+    pill.className = `capture-pill ${colorClass}`;
+    pill.textContent = type;
+    fragment.appendChild(pill);
   });
-  container.innerHTML = '';
-  if (pieces.length === 0) {
-    const placeholder = document.createElement('span');
-    placeholder.className = 'captured-placeholder';
-    placeholder.textContent = color === 'w' ? 'White safe' : 'Black safe';
-    container.appendChild(placeholder);
-  } else {
-    container.appendChild(fragment);
-  }
+  container.appendChild(fragment);
 }
 
 function countPieces(board) {

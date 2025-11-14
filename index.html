@@ -97,52 +97,58 @@
         width: 800px;
         height: 800px;
       }
-      .captured-row {
-        position: absolute;
-        top: 10px;
-        display: flex;
-        gap: 0.25rem;
-        align-items: center;
-        pointer-events: none;
-        z-index: 2;
-      }
-      .captured-row--left {
-        left: 10px;
-        justify-content: flex-start;
-      }
-      .captured-row--right {
-        right: 10px;
-        justify-content: flex-end;
-      }
-      .captured-piece {
-        width: 30px;
-        height: 30px;
-        border-radius: 999px;
-        display: flex;
-        align-items: center;
-        justify-content: center;
+      .capture-table {
+        align-self: flex-end;
+        width: 100%;
+        max-width: 360px;
+        border-collapse: collapse;
+        background: rgba(15, 23, 42, 0.65);
+        border: 1px solid rgba(148, 163, 184, 0.35);
+        border-radius: 12px;
+        overflow: hidden;
         font-size: 0.85rem;
-        font-weight: 600;
-        border: 1px solid rgba(248, 250, 252, 0.8);
-        box-shadow: 0 2px 6px rgba(15, 23, 42, 0.45);
+        margin-top: 0.5rem;
       }
-      .captured-piece--white {
-        background: rgba(248, 250, 252, 0.85);
+      .capture-table thead {
+        background: rgba(59, 130, 246, 0.22);
+      }
+      .capture-table th,
+      .capture-table td {
+        padding: 0.35rem 0.6rem;
+        text-align: left;
+        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
+      }
+      .capture-table th {
+        text-transform: uppercase;
+        letter-spacing: 0.05em;
+        font-size: 0.78rem;
+        color: #e0f2fe;
+      }
+      .capture-pieces {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.25rem;
+      }
+      .capture-pill {
+        min-width: 28px;
+        padding: 0.1rem 0.4rem;
+        border-radius: 999px;
+        border: 1px solid rgba(248, 250, 252, 0.7);
+        font-weight: 600;
+        font-size: 0.8rem;
+        text-align: center;
+      }
+      .capture-pill.white {
+        background: rgba(248, 250, 252, 0.8);
         color: #0f172a;
       }
-      .captured-piece--black {
-        background: rgba(15, 23, 42, 0.8);
+      .capture-pill.black {
+        background: rgba(15, 23, 42, 0.85);
         color: #f8fafc;
       }
-      .captured-placeholder {
-        color: rgba(248, 250, 252, 0.65);
-        font-size: 0.75rem;
-        letter-spacing: 0.04em;
-        text-transform: uppercase;
-        padding: 0.15rem 0.35rem;
-        border-radius: 999px;
-        background: rgba(15, 23, 42, 0.35);
-        border: 1px solid rgba(248, 250, 252, 0.25);
+      .capture-empty {
+        font-style: italic;
+        color: rgba(248, 250, 252, 0.7);
       }
       .board-status {
         display: flex;
@@ -305,8 +311,6 @@
         </aside>
         <div class="board-column">
           <div id="board-wrap">
-            <div id="white-captured" class="captured-row captured-row--left"></div>
-            <div id="black-captured" class="captured-row captured-row--right"></div>
             <canvas id="board" width="800" height="800"></canvas>
             <canvas id="overlay" width="800" height="800"></canvas>
           </div>
@@ -315,6 +319,20 @@
             <div id="perspective-label"></div>
             <div id="board-status-detail"></div>
           </div>
+          <table class="capture-table">
+            <thead>
+              <tr>
+                <th>White Safe</th>
+                <th>Black Safe</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td><div id="white-captured" class="capture-pieces"></div></td>
+                <td><div id="black-captured" class="capture-pieces"></div></td>
+              </tr>
+            </tbody>
+          </table>
           <div class="fitness">
             <div id="fitness-value"></div>
             <div id="fitness-equation" class="fitness-equation"></div>
