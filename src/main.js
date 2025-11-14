@@ -29,11 +29,8 @@ const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
-const whiteCapturedEl = document.getElementById('white-captured');
-const blackCapturedEl = document.getElementById('black-captured');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
-const actionBarEl = document.getElementById('action-bar');
 const blackMoveBtn = document.getElementById('black-move-btn');
 const backsyBtn = document.getElementById('backsy-btn');
 const PROMOTION_PIECES = ['Q', 'N'];
@@ -60,7 +57,11 @@ const THREAT_PIECE_VALUE = {
   K: 12,
 };
 const PIECE_TYPES = ['P', 'N', 'B', 'R', 'Q', 'K'];
-const CAPTURE_ORDER = ['Q', 'R', 'B', 'N', 'P'];
+const DEFAULT_PIECE_COUNTS = {
+  w: { P: 8, N: 2, B: 2, R: 2, Q: 1, K: 1 },
+  b: { P: 8, N: 2, B: 2, R: 2, Q: 1, K: 1 },
+};
+const SAFE_ROW_ORDER = ['P', 'Q', 'R', 'B', 'N', 'K'];
 
 const SCENARIOS = [
   {
@@ -119,6 +120,8 @@ const SCENARIOS = [
   },
 ];
 
+const safeCells = createSafeCellMap();
+
 const SETTINGS_KEY = 'tensorchess:ui';
 const GAME_KEY = 'tensorchess:last-game';
 const persistedSettings = loadSettings();
@@ -166,18 +169,15 @@ const drag = {
 
 const playerUndoStack = [];
 let pendingAutoResponse = null;
-let actionBarVisible = false;
 let playerColor = ui.flipped ? 'b' : 'w';
-let baselinePieces = countPieces(game.board);
 
-let heatValues = computeHeat(game);
+let heatValues = computeHeat(game, { color: playerColor });
 const analysisEntries = [];
 attachControls();
 renderScenarioList();
 attachPointerEvents();
 attachActionControls();
 updateActionButtons();
-baselinePieces = countPieces(game.board);
 renderCapturedPieces();
 prepareAutoResponseOptions();
 render();
@@ -310,7 +310,7 @@ function updatePreviewForIndex(idx) {
     drag.previewBasePiece = null;
     drag.previewBaseSnap = null;
     drag.snapPoint = null;
-    heatValues = computeHeat(game);
+    heatValues = computeHeat(game, { color: playerColor });
     clearPromotionCandidate();
     return;
   }
@@ -329,7 +329,7 @@ function updatePreviewForIndex(idx) {
   drag.previewBasePiece = drag.previewPiece;
   drag.snapPoint = squareCenter(effectiveMove.to, ui.flipped);
   drag.previewBaseSnap = drag.snapPoint;
-  heatValues = computeHeat(nextState, { previewBoard: nextState.board });
+  heatValues = computeHeat(nextState, { previewBoard: nextState.board, color: playerColor });
   scheduleAutoSequence();
   render();
 }
@@ -368,7 +368,7 @@ function handleDrop(idx) {
   } else {
     ui.checkmatedColor = detectCheckmate(game);
   }
-  heatValues = computeHeat(game);
+  heatValues = computeHeat(game, { color: playerColor });
   renderCapturedPieces();
   clearPromotionCandidate();
   endDrag();
@@ -475,6 +475,7 @@ function toggleBoardView(shouldRender = true) {
   ui.flipped = !ui.flipped;
   playerColor = ui.flipped ? 'b' : 'w';
   pendingAutoResponse = null;
+  heatValues = computeHeat(game, { color: playerColor });
   updateActionButtons();
   prepareAutoResponseOptions();
   persistSettings();
@@ -497,8 +498,6 @@ function collectMovableSquares(state) {
 function renderScenarioList() {
   if (!scenarioListEl) return;
   scenarioListEl.innerHTML = '';
-  baselinePieces = countPieces(game.board);
-  renderCapturedPieces();
   SCENARIOS.forEach((scenario) => {
     const btn = document.createElement('button');
     btn.className = 'scenario-btn';
@@ -526,7 +525,7 @@ function loadScenario(scenario) {
   game = createInitialState(scenario.fen);
   playerUndoStack.length = 0;
   pendingAutoResponse = null;
-  heatValues = computeHeat(game);
+  heatValues = computeHeat(game, { color: playerColor });
   drag.active = false;
   drag.from = null;
   drag.piece = null;
@@ -552,10 +551,8 @@ function loadScenario(scenario) {
   ui.checkmatedColor = detectCheckmate(game);
   renderScenarioList();
   saveScenarioSelection();
-  hideActionBar();
   updateActionButtons();
   playerColor = ui.flipped ? 'b' : 'w';
-  baselinePieces = countPieces(game.board);
   renderCapturedPieces();
   prepareAutoResponseOptions();
   render();
@@ -652,47 +649,18 @@ function commitLastMoveVisuals() {
 }
 
 function renderCapturedPieces(board = game.board) {
-  if (!whiteCapturedEl || !blackCapturedEl || !baselinePieces) return;
-  const captured = getCapturedPieces(board);
-  renderCapturedRow(whiteCapturedEl, captured.w, 'white');
-  renderCapturedRow(blackCapturedEl, captured.b, 'black');
-}
-
-function getCapturedPieces(board) {
-  const result = { w: [], b: [] };
-  if (!board) return result;
-  const currentCounts = countPieces(board);
+  if (!safeCells.w || !safeCells.b) return;
+  const counts = countPieces(board);
   ['w', 'b'].forEach((color) => {
-    CAPTURE_ORDER.forEach((type) => {
-      const baselineCount = baselinePieces[color]?.[type] ?? 0;
-      const currentCount = currentCounts[color]?.[type] ?? 0;
-      const missing = Math.max(0, baselineCount - currentCount);
-      for (let i = 0; i < missing; i += 1) {
-        result[color].push(type);
-      }
+    SAFE_ROW_ORDER.forEach((type) => {
+      const expected = color === 'w'
+        ? DEFAULT_PIECE_COUNTS.w[type]
+        : DEFAULT_PIECE_COUNTS.b[type];
+      const available = counts[color]?.[type] ?? 0;
+      const missing = Math.max(0, expected - available);
+      updateSafeCell(safeCells[color][type], missing);
     });
   });
-  return result;
-}
-
-function renderCapturedRow(container, pieces, colorClass) {
-  if (!container) return;
-  container.innerHTML = '';
-  if (!pieces.length) {
-    const empty = document.createElement('div');
-    empty.className = 'capture-empty';
-    empty.textContent = 'Safe';
-    container.appendChild(empty);
-    return;
-  }
-  const fragment = document.createDocumentFragment();
-  pieces.forEach((type) => {
-    const pill = document.createElement('span');
-    pill.className = `capture-pill ${colorClass}`;
-    pill.textContent = type;
-    fragment.appendChild(pill);
-  });
-  container.appendChild(fragment);
 }
 
 function countPieces(board) {
@@ -715,6 +683,33 @@ function countPieces(board) {
     counts[color][type] = (counts[color][type] || 0) + 1;
   });
   return counts;
+}
+
+function createSafeCellMap() {
+  const map = { w: {}, b: {} };
+  SAFE_ROW_ORDER.forEach((type) => {
+    map.w[type] = {
+      countEl: document.getElementById(`white-safe-${type}`),
+      pillEl: document.querySelector(`[data-safe="white-${type}"]`),
+    };
+    map.b[type] = {
+      countEl: document.getElementById(`black-safe-${type}`),
+      pillEl: document.querySelector(`[data-safe="black-${type}"]`),
+    };
+  });
+  return map;
+}
+
+function updateSafeCell(entry, count) {
+  if (!entry || !entry.countEl) return;
+  if (count > 0) {
+    entry.countEl.textContent = `×${count}`;
+    entry.pillEl?.classList.add('danger');
+    entry.pillEl?.classList.remove('hidden');
+  } else {
+    entry.pillEl?.classList.remove('danger');
+    entry.pillEl?.classList.add('hidden');
+  }
 }
 
 function attachActionControls() {
@@ -741,31 +736,15 @@ function prepareAutoResponseOptions() {
     index: 0,
     color: opponentColor,
   };
-  revealActionBar();
   updateActionButtons();
-}
-
-function revealActionBar() {
-  if (!actionBarEl || actionBarVisible) return;
-  actionBarEl.classList.remove('action-bar--hidden');
-  actionBarVisible = true;
-}
-
-function hideActionBar() {
-  if (!actionBarEl) return;
-  actionBarEl.classList.add('action-bar--hidden');
-  actionBarVisible = false;
 }
 
 function updateActionButtons() {
   const opponentColor = playerColor === 'w' ? 'b' : 'w';
   if (blackMoveBtn) {
-    const canMove = Boolean(pendingAutoResponse && pendingAutoResponse.moves.length);
-    blackMoveBtn.disabled = !canMove;
     blackMoveBtn.textContent = `${opponentColor === 'w' ? 'White' : 'Black'} Move`;
   }
   if (backsyBtn) {
-    backsyBtn.disabled = playerUndoStack.length === 0;
     backsyBtn.textContent = `Backsy (${playerColor === 'w' ? 'White' : 'Black'})`;
   }
 }
@@ -842,14 +821,25 @@ function drawPromotionOptions(ctx) {
 }
 
 function handleAutoMoveClick() {
-  if (!pendingAutoResponse || !pendingAutoResponse.moves.length) return;
+  if (!pendingAutoResponse || !pendingAutoResponse.moves.length) {
+    console.log('[AutoMove] No pending responses available.');
+    return;
+  }
   const { baseState, moves, color } = pendingAutoResponse;
+  const base = baseState ?? game;
   const move = moves[pendingAutoResponse.index];
-  const nextState = simulateMove(baseState, move);
+  console.log('[AutoMove] Executing move', {
+    index: pendingAutoResponse.index,
+    total: moves.length,
+    actor: color,
+    from: move.from,
+    to: move.to,
+  });
+  const nextState = simulateMove(base, move);
   game = nextState;
   ui.movableSquares = collectMovableSquares(game);
   ui.checkmatedColor = detectCheckmate(game);
-  heatValues = computeHeat(game);
+  heatValues = computeHeat(game, { color: playerColor });
   renderCapturedPieces();
   appendAnalysisEntry({
     actor: color === 'w' ? 'White' : 'Black',
@@ -857,10 +847,8 @@ function handleAutoMoveClick() {
   });
   triggerKingFlashIfNeeded(move);
   pendingAutoResponse.index = (pendingAutoResponse.index + 1) % moves.length;
-  if (game.turn !== color) {
-    pendingAutoResponse = null;
-    prepareAutoResponseOptions();
-  }
+  console.log('[AutoMove] Next index set to', pendingAutoResponse.index);
+  updateActionButtons();
   render();
 }
 
@@ -871,7 +859,7 @@ function handleBacksyClick() {
   pendingAutoResponse = null;
   game = cloneState(snapshot);
   ui.checkmatedColor = detectCheckmate(game);
-  heatValues = computeHeat(game);
+  heatValues = computeHeat(game, { color: playerColor });
   drag.active = false;
   drag.from = null;
   drag.piece = null;

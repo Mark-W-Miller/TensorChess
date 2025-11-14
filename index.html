@@ -38,6 +38,13 @@
         gap: 0.5rem;
         align-items: flex-start;
       }
+      .sidebar-column {
+        flex: 0 0 280px;
+        display: flex;
+        flex-direction: column;
+        gap: 0.75rem;
+        align-items: stretch;
+      }
 
       canvas {
         border-radius: 8px;
@@ -97,58 +104,69 @@
         width: 800px;
         height: 800px;
       }
-      .capture-table {
-        align-self: flex-end;
+      .safe-panel {
         width: 100%;
-        max-width: 360px;
-        border-collapse: collapse;
-        background: rgba(15, 23, 42, 0.65);
+        max-width: 420px;
+        background: rgba(15, 23, 42, 0.6);
         border: 1px solid rgba(148, 163, 184, 0.35);
-        border-radius: 12px;
-        overflow: hidden;
-        font-size: 0.85rem;
-        margin-top: 0.5rem;
-      }
-      .capture-table thead {
-        background: rgba(59, 130, 246, 0.22);
-      }
-      .capture-table th,
-      .capture-table td {
-        padding: 0.35rem 0.6rem;
-        text-align: left;
-        border-bottom: 1px solid rgba(148, 163, 184, 0.2);
-      }
-      .capture-table th {
-        text-transform: uppercase;
-        letter-spacing: 0.05em;
-        font-size: 0.78rem;
-        color: #e0f2fe;
-      }
-      .capture-pieces {
+        border-radius: 14px;
+        padding: 0.6rem 0.9rem;
         display: flex;
+        flex-direction: column;
+        gap: 0.5rem;
+        box-shadow: 0 10px 30px rgba(15, 23, 42, 0.6);
+      }
+      .safe-row {
+        display: flex;
+        align-items: center;
+        gap: 0.55rem;
         flex-wrap: wrap;
-        gap: 0.25rem;
       }
-      .capture-pill {
-        min-width: 28px;
-        padding: 0.1rem 0.4rem;
-        border-radius: 999px;
-        border: 1px solid rgba(248, 250, 252, 0.7);
-        font-weight: 600;
-        font-size: 0.8rem;
-        text-align: center;
+      .safe-label {
+        width: 78px;
+        font-size: 0.78rem;
+        letter-spacing: 0.05em;
+        text-transform: uppercase;
+        color: #bae6fd;
       }
-      .capture-pill.white {
-        background: rgba(248, 250, 252, 0.8);
-        color: #0f172a;
+      .safe-track {
+        display: flex;
+        gap: 0.45rem;
+        flex: 1;
       }
-      .capture-pill.black {
+      .safe-pill {
+        width: 48px;
+        height: 48px;
+        border-radius: 50%;
+        border: 2px solid rgba(248, 250, 252, 0.85);
+        display: flex;
+        flex-direction: column;
+        align-items: center;
+        justify-content: center;
         background: rgba(15, 23, 42, 0.85);
         color: #f8fafc;
+        position: relative;
+        transition: transform 0.2s, box-shadow 0.2s;
       }
-      .capture-empty {
-        font-style: italic;
-        color: rgba(248, 250, 252, 0.7);
+      .safe-pill.hidden {
+        display: none;
+      }
+      .safe-pill.white {
+        background: rgba(248, 250, 252, 0.9);
+        color: #0f172a;
+        border-color: rgba(15, 23, 42, 0.6);
+      }
+      .safe-pill.danger {
+        box-shadow: 0 0 12px rgba(239, 68, 68, 0.6);
+        transform: translateY(-2px);
+      }
+      .safe-letter {
+        font-weight: 700;
+        font-size: 0.85rem;
+      }
+      .safe-count {
+        font-size: 0.68rem;
+        font-weight: 600;
       }
       .board-status {
         display: flex;
@@ -190,6 +208,7 @@
         display: flex;
         flex-direction: column;
         gap: 0.75rem;
+        max-height: 360px;
         box-shadow: 0 20px 40px rgba(15, 23, 42, 0.45);
       }
 
@@ -205,6 +224,9 @@
         display: flex;
         flex-direction: column;
         gap: 0.5rem;
+        overflow-y: auto;
+        max-height: 240px;
+        padding-right: 0.25rem;
       }
 
       .scenario-btn {
@@ -301,11 +323,18 @@
       <div class="controls">
         <button id="reset-btn">Reset</button>
         <button id="flip-btn">Flip Board</button>
+        <button id="black-move-btn">Opponent Move</button>
+        <button id="backsy-btn">Backsy</button>
         <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
         <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
       </div>
       <div class="workspace">
         <aside class="analysis-panel">
+          <div class="board-status">
+            <strong>Board Perspective</strong>
+            <div id="perspective-label"></div>
+            <div id="board-status-detail"></div>
+          </div>
           <h2>Decision Log</h2>
           <div id="analysis-log"></div>
         </aside>
@@ -314,39 +343,78 @@
             <canvas id="board" width="800" height="800"></canvas>
             <canvas id="overlay" width="800" height="800"></canvas>
           </div>
-          <div class="board-status">
-            <strong>Board Perspective</strong>
-            <div id="perspective-label"></div>
-            <div id="board-status-detail"></div>
-          </div>
-          <table class="capture-table">
-            <thead>
-              <tr>
-                <th>White Safe</th>
-                <th>Black Safe</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr>
-                <td><div id="white-captured" class="capture-pieces"></div></td>
-                <td><div id="black-captured" class="capture-pieces"></div></td>
-              </tr>
-            </tbody>
-          </table>
           <div class="fitness">
             <div id="fitness-value"></div>
             <div id="fitness-equation" class="fitness-equation"></div>
           </div>
         </div>
-        <aside class="scenario-panel">
-          <h2>Scenarios</h2>
-          <div id="scenario-list"></div>
-          <div id="scenario-info"></div>
-        </aside>
-      </div>
-      <div class="action-bar action-bar--hidden" id="action-bar">
-        <button id="black-move-btn" disabled>Black Move</button>
-        <button id="backsy-btn" disabled>Backsy</button>
+        <div class="sidebar-column">
+          <aside class="scenario-panel">
+            <h2>Scenarios</h2>
+            <div id="scenario-list"></div>
+            <div id="scenario-info"></div>
+          </aside>
+          <div class="safe-panel">
+            <div class="safe-row">
+              <div class="safe-label">White Safe</div>
+              <div class="safe-track">
+                <div class="safe-pill white hidden" data-safe="white-P">
+                  <span class="safe-letter">P</span>
+                  <span class="safe-count" id="white-safe-P">Safe</span>
+                </div>
+                <div class="safe-pill white hidden" data-safe="white-Q">
+                  <span class="safe-letter">Q</span>
+                  <span class="safe-count" id="white-safe-Q">Safe</span>
+                </div>
+                <div class="safe-pill white hidden" data-safe="white-R">
+                  <span class="safe-letter">R</span>
+                  <span class="safe-count" id="white-safe-R">Safe</span>
+                </div>
+                <div class="safe-pill white hidden" data-safe="white-B">
+                  <span class="safe-letter">B</span>
+                  <span class="safe-count" id="white-safe-B">Safe</span>
+                </div>
+                <div class="safe-pill white hidden" data-safe="white-N">
+                  <span class="safe-letter">N</span>
+                  <span class="safe-count" id="white-safe-N">Safe</span>
+                </div>
+                <div class="safe-pill white hidden" data-safe="white-K">
+                  <span class="safe-letter">K</span>
+                  <span class="safe-count" id="white-safe-K">Safe</span>
+                </div>
+              </div>
+            </div>
+            <div class="safe-row">
+              <div class="safe-label">Black Safe</div>
+              <div class="safe-track">
+                <div class="safe-pill hidden" data-safe="black-P">
+                  <span class="safe-letter">P</span>
+                  <span class="safe-count" id="black-safe-P">Safe</span>
+                </div>
+                <div class="safe-pill hidden" data-safe="black-Q">
+                  <span class="safe-letter">Q</span>
+                  <span class="safe-count" id="black-safe-Q">Safe</span>
+                </div>
+                <div class="safe-pill hidden" data-safe="black-R">
+                  <span class="safe-letter">R</span>
+                  <span class="safe-count" id="black-safe-R">Safe</span>
+                </div>
+                <div class="safe-pill hidden" data-safe="black-B">
+                  <span class="safe-letter">B</span>
+                  <span class="safe-count" id="black-safe-B">Safe</span>
+                </div>
+                <div class="safe-pill hidden" data-safe="black-N">
+                  <span class="safe-letter">N</span>
+                  <span class="safe-count" id="black-safe-N">Safe</span>
+                </div>
+                <div class="safe-pill hidden" data-safe="black-K">
+                  <span class="safe-letter">K</span>
+                  <span class="safe-count" id="black-safe-K">Safe</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
     <script type="module" src="/src/main.js"></script>

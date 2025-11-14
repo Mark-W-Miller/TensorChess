@@ -1,4 +1,4 @@
-import { getAttackMap, getKingSquare, previewBoard } from '../model/chess.js';
+import { getAttackMap, getKingSquare, previewBoard, getLegalMoves, simulateMove } from '../model/chess.js';
 import { squarePosition, SQUARE_SIZE } from './board.js';
 
 const SAFE = [13, 148, 136];
@@ -11,29 +11,24 @@ export function computeHeat(state, options = {}) {
   if (kingSquare === -1) {
     return new Array(64).fill(0);
   }
+  const baseState = { ...state, board: baseBoard };
   const opponent = color === 'w' ? 'b' : 'w';
-  const opponentMap = getAttackMap(baseBoard, opponent);
-  const friendlyMap = getAttackMap(baseBoard, color);
+  const futureThreats = aggregateFutureThreats(baseState, opponent);
   const heat = new Array(64).fill(0);
   const kingCoords = idxToCoord(kingSquare);
+  const maxThreat = Math.max(1, ...futureThreats);
+  const kingThreat = futureThreats[kingSquare] / maxThreat;
 
   for (let idx = 0; idx < 64; idx++) {
     const coord = idxToCoord(idx);
     const distance = Math.hypot(coord.file - kingCoords.file, coord.rank - kingCoords.rank);
     const distanceFactor = Math.max(0, 1 - distance / 5);
 
-    let danger = 0;
-    danger += opponentMap[idx] * 0.45;
-    danger -= friendlyMap[idx] * 0.15;
-    danger += distanceFactor * opponentMap[kingSquare] * 0.25;
+    const localThreat = futureThreats[idx] / maxThreat;
+    const distanceWeighted = distanceFactor * kingThreat;
+    const danger = clamp01(localThreat * 0.85 + distanceWeighted * 0.65);
 
-    const sameFile = Math.abs(coord.file - kingCoords.file) < 1;
-    const sameDiag = Math.abs(coord.file - kingCoords.file) === Math.abs(coord.rank - kingCoords.rank);
-    if ((sameFile || sameDiag) && opponentMap[idx] > 0) {
-      danger += 0.15;
-    }
-
-    heat[idx] = clamp01(danger);
+    heat[idx] = danger;
   }
   return heat;
 }
@@ -62,6 +57,23 @@ export function lerpColor(start, end, t) {
 export function previewHeat(state, move) {
   const board = previewBoard(state.board, move);
   return computeHeat({ ...state, board });
+}
+
+function aggregateFutureThreats(state, opponent) {
+  const threatTotals = new Array(64).fill(0);
+  const opponentState = { ...state, turn: opponent };
+  state.board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== opponent) return;
+    const legalMoves = getLegalMoves(opponentState, idx);
+    legalMoves.forEach((move) => {
+      const nextState = simulateMove(opponentState, move);
+      const attackMap = getAttackMap(nextState.board, opponent);
+      attackMap.forEach((count, square) => {
+        threatTotals[square] += count;
+      });
+    });
+  });
+  return threatTotals;
 }
 
 function idxToCoord(idx) {
