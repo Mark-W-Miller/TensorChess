@@ -37,12 +37,55 @@
       }
 
       .board-column {
+        --board-split: 50%;
         flex: 1;
+        display: grid;
+        grid-template-columns: minmax(0, var(--board-split)) 18px minmax(0, calc(100% - var(--board-split)));
+        column-gap: 1.2rem;
+        align-items: center;
+        justify-content: center;
+        position: relative;
+      }
+      .board-pane {
         display: flex;
-        flex-wrap: wrap;
-        gap: 1.25rem;
-        align-items: flex-start;
-        justify-content: space-between;
+        justify-content: center;
+        align-items: center;
+        min-width: 260px;
+      }
+      .board-pane.hidden {
+        display: none;
+      }
+      .board-resizer {
+        flex: 0 0 auto;
+        width: 18px;
+        padding: 0 6px;
+        cursor: ew-resize;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        height: 100%;
+        user-select: none;
+        touch-action: none;
+        position: relative;
+        border-radius: 10px;
+        background: transparent;
+      }
+      .board-resizer-line {
+        width: 2px;
+        height: 70%;
+        border-radius: 999px;
+        background: rgba(148, 163, 184, 0.7);
+        box-shadow: 0 0 18px rgba(15, 23, 42, 0.55);
+        transform-origin: center;
+        transition: background 0.12s ease, box-shadow 0.12s ease, height 0.2s ease;
+        pointer-events: none;
+      }
+      .board-resizer:hover .board-resizer-line,
+      .board-resizer:focus-visible .board-resizer-line,
+      .board-resizer.board-resizer--hover .board-resizer-line {
+        background: rgba(248, 250, 252, 0.95);
+        height: 85%;
+        box-shadow: 0 0 24px rgba(248, 250, 252, 0.7);
       }
       .sidebar-column {
         flex: 0 0 320px;
@@ -52,6 +95,36 @@
         align-items: stretch;
         position: sticky;
         top: 5.5rem;
+      }
+      .sidebar-column.collapsed {
+        display: none;
+      }
+      .sidebar-header {
+        display: flex;
+        justify-content: flex-end;
+        margin-bottom: 0.35rem;
+      }
+      .sidebar-close {
+        border-radius: 999px;
+        border: 1px solid rgba(248, 250, 252, 0.6);
+        background: rgba(15, 23, 42, 0.8);
+        color: inherit;
+        padding: 0.2rem 0.6rem;
+        font-size: 0.8rem;
+        line-height: 1;
+      }
+      #sidebar-open-btn {
+        position: sticky;
+        top: 5.2rem;
+        left: 0;
+        z-index: 40;
+        border-radius: 999px;
+        border: 1px solid rgba(248, 250, 252, 0.6);
+        background: rgba(15, 23, 42, 0.85);
+        color: inherit;
+        padding: 0.3rem 0.65rem;
+        font-size: 0.85rem;
+        display: none;
       }
 
       canvas {
@@ -177,10 +250,9 @@
       #board-wrap,
       #board3d-container {
         position: relative;
-        flex: 1 1 480px;
+        flex: 1 1 auto;
         width: 100%;
-        max-width: 960px;
-        min-width: 360px;
+        min-width: 260px;
         aspect-ratio: 1 / 1;
         border-radius: 12px;
       }
@@ -487,7 +559,11 @@
         </div>
       </div>
       <div class="workspace">
-        <div class="sidebar-column">
+        <button id="sidebar-open-btn" type="button" aria-expanded="true">☰</button>
+        <div class="sidebar-column" id="sidebar-column">
+          <div class="sidebar-header">
+            <button id="sidebar-close-btn" class="sidebar-close" type="button" aria-label="Close sidebar">✕</button>
+          </div>
           <div class="fitness">
             <div id="fitness-value"></div>
           </div>
@@ -566,21 +642,28 @@
             <div id="scenario-info"></div>
           </aside>
         </div>
-        <div class="board-column">
-          <div id="board-wrap">
-            <canvas id="board" width="960" height="960"></canvas>
-            <canvas id="overlay" width="960" height="960"></canvas>
+        <div class="board-column" id="board-column">
+          <div class="board-pane" id="board2d-pane" style="grid-column: 1;">
+            <div id="board-wrap">
+              <canvas id="board" width="960" height="960"></canvas>
+              <canvas id="overlay" width="960" height="960"></canvas>
+            </div>
           </div>
-          <div id="board3d-container">
-            <div id="board3d-hud" class="board3d-hud">
-              <button id="board3d-hud-toggle" class="board3d-hud-toggle" type="button" aria-expanded="true">HUD ▾</button>
-              <div class="board3d-hud-body">
-                <div class="hud-slider">
-                  <div class="hud-slider-header">
-                    <span>Heat Height</span>
-                    <span id="heat-height-value">100%</span>
+          <div id="board-resizer" class="board-resizer" style="grid-column: 2;" role="separator" tabindex="0" aria-label="Resize boards">
+            <span class="board-resizer-line"></span>
+          </div>
+          <div class="board-pane" id="board3d-pane" style="grid-column: 3;">
+            <div id="board3d-container">
+              <div id="board3d-hud" class="board3d-hud">
+                <button id="board3d-hud-toggle" class="board3d-hud-toggle" type="button" aria-expanded="true">HUD ▾</button>
+                <div class="board3d-hud-body">
+                  <div class="hud-slider">
+                    <div class="hud-slider-header">
+                      <span>Heat Height</span>
+                      <span id="heat-height-value">100%</span>
+                    </div>
+                    <input id="heat-height-slider" type="range" min="0.3" max="2" step="0.05" value="1" aria-label="Heat marker height" />
                   </div>
-                  <input id="heat-height-slider" type="range" min="0.6" max="1.6" step="0.02" value="1" aria-label="Heat marker height" />
                 </div>
               </div>
             </div>

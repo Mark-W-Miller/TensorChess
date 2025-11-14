@@ -42,6 +42,13 @@ const boardHudEl = document.getElementById('board3d-hud');
 const boardHudToggle = document.getElementById('board3d-hud-toggle');
 const heatHeightSlider = document.getElementById('heat-height-slider');
 const heatHeightValueEl = document.getElementById('heat-height-value');
+const sidebarColumnEl = document.getElementById('sidebar-column');
+const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
+const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
+const boardColumnEl = document.getElementById('board-column');
+const board2dPaneEl = document.getElementById('board2d-pane');
+const board3dPaneEl = document.getElementById('board3d-pane');
+const boardResizerEl = document.getElementById('board-resizer');
 const board2dToggle = document.getElementById('toggle-2d-board');
 const board3dToggle = document.getElementById('toggle-3d-board');
 const perspectiveLabelEl = document.getElementById('perspective-label');
@@ -158,6 +165,8 @@ const ui = {
   showSupportLayer: true,
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
+  sidebarOpen: persistedSettings.sidebarOpen ?? true,
+  boardSplit: clampBoardSplit(persistedSettings.boardSplit ?? 0.5),
   hoverIdx: null,
   movableSquares: new Set(),
   selected: null,
@@ -231,6 +240,7 @@ function attachControls() {
     }
   };
   updateHeatHeightControls();
+  updateBoardSplitDisplay();
 
   resetBtn.addEventListener('click', () => {
     loadScenario(currentScenario);
@@ -280,6 +290,22 @@ function attachControls() {
       ui.show3dBoard = event.target.checked;
       persistSettings();
       updateBoardVisibility();
+    });
+  }
+
+  if (sidebarCloseBtn) {
+    sidebarCloseBtn.addEventListener('click', () => {
+      ui.sidebarOpen = false;
+      persistSettings();
+      updateSidebarVisibility();
+    });
+  }
+
+  if (sidebarOpenBtn) {
+    sidebarOpenBtn.addEventListener('click', () => {
+      ui.sidebarOpen = true;
+      persistSettings();
+      updateSidebarVisibility();
     });
   }
 
@@ -349,6 +375,127 @@ function attachControls() {
     });
   }
 
+  if (boardResizerEl && boardColumnEl) {
+    let resizing = false;
+    let activePointer = null;
+    const setHover = (state) => {
+      boardResizerEl.classList.toggle('board-resizer--hover', state);
+    };
+    const updateFromClientX = (clientX) => {
+      const rect = boardColumnEl.getBoundingClientRect();
+      if (!rect.width) return;
+      const ratio = clampBoardSplit((clientX - rect.left) / rect.width);
+      ui.boardSplit = ratio;
+      updateBoardSplitDisplay();
+      persistSettings();
+    };
+    const stopPointerResize = () => {
+      if (!resizing) return;
+      resizing = false;
+      if (activePointer !== null && boardResizerEl.releasePointerCapture) {
+        try {
+          boardResizerEl.releasePointerCapture(activePointer);
+        } catch (err) {
+          // ignore release errors
+        }
+      }
+      activePointer = null;
+      setHover(false);
+    };
+    const startResize = (clientX, pointerId = null) => {
+      if (!ui.show2dBoard || !ui.show3dBoard) return;
+      resizing = true;
+      activePointer = pointerId;
+      setHover(true);
+      updateFromClientX(clientX);
+    };
+    if (window.PointerEvent) {
+      const handlePointerMove = (event) => {
+        if (!resizing) return;
+        event.preventDefault();
+        setHover(true);
+        updateFromClientX(event.clientX);
+      };
+      boardResizerEl.addEventListener('pointerdown', (event) => {
+        if (boardResizerEl.setPointerCapture) {
+          try {
+            boardResizerEl.setPointerCapture(event.pointerId);
+          } catch (err) {
+            // ignore capture errors
+          }
+        }
+        startResize(event.clientX, event.pointerId);
+        event.preventDefault();
+      });
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', stopPointerResize);
+      window.addEventListener('pointercancel', stopPointerResize);
+    } else {
+      const handleMouseMove = (event) => {
+        if (!resizing) return;
+        event.preventDefault();
+        updateFromClientX(event.clientX);
+      };
+      const handleTouchMove = (event) => {
+        if (!resizing || !event.touches.length) return;
+        event.preventDefault();
+        updateFromClientX(event.touches[0].clientX);
+      };
+      const stopMouseResize = () => {
+        if (!resizing) return;
+        resizing = false;
+        document.removeEventListener('mousemove', handleMouseMove);
+        document.removeEventListener('mouseup', stopMouseResize);
+        document.removeEventListener('touchmove', handleTouchMove);
+        document.removeEventListener('touchend', stopMouseResize);
+        setHover(false);
+      };
+      boardResizerEl.addEventListener('mousedown', (event) => {
+        startResize(event.clientX);
+        event.preventDefault();
+        document.addEventListener('mousemove', handleMouseMove);
+        document.addEventListener('mouseup', stopMouseResize);
+      });
+      boardResizerEl.addEventListener('touchstart', (event) => {
+        if (!event.touches.length) return;
+        startResize(event.touches[0].clientX);
+        document.addEventListener('touchmove', handleTouchMove, { passive: false });
+        document.addEventListener('touchend', stopMouseResize, { once: true });
+      });
+    }
+    boardResizerEl.addEventListener('mouseenter', () => setHover(true));
+    boardResizerEl.addEventListener('mouseleave', () => {
+      if (!resizing) {
+        setHover(false);
+      }
+    });
+    boardResizerEl.addEventListener('keydown', (event) => {
+      if (!ui.show2dBoard || !ui.show3dBoard) return;
+      const step = 0.02;
+      if (event.key === 'ArrowLeft') {
+        event.preventDefault();
+        ui.boardSplit = clampBoardSplit(ui.boardSplit - step);
+        updateBoardSplitDisplay();
+        persistSettings();
+      } else if (event.key === 'ArrowRight') {
+        event.preventDefault();
+        ui.boardSplit = clampBoardSplit(ui.boardSplit + step);
+        updateBoardSplitDisplay();
+        persistSettings();
+      } else if (event.key === 'Home') {
+        event.preventDefault();
+        ui.boardSplit = 0.25;
+        updateBoardSplitDisplay();
+        persistSettings();
+      } else if (event.key === 'End') {
+        event.preventDefault();
+        ui.boardSplit = 0.75;
+        updateBoardSplitDisplay();
+        persistSettings();
+      }
+    });
+  }
+
   if (boardHudToggle && boardHudEl) {
     boardHudToggle.addEventListener('click', (event) => {
       event.stopPropagation();
@@ -357,6 +504,8 @@ function attachControls() {
       boardHudToggle.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     });
   }
+
+  updateSidebarVisibility();
 }
 
 function attachPointerEvents() {
@@ -631,6 +780,8 @@ function persistSettings() {
     heatHeightScale: ui.heatHeightScale,
     show2dBoard: ui.show2dBoard,
     show3dBoard: ui.show3dBoard,
+    sidebarOpen: ui.sidebarOpen,
+    boardSplit: ui.boardSplit,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -641,7 +792,12 @@ function persistSettings() {
 
 function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(1.6, Math.max(0.6, value));
+  return Math.min(2, Math.max(0.3, value));
+}
+
+function clampBoardSplit(value) {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.min(0.85, Math.max(0.15, value));
 }
 
 function updateBoardVisibility() {
@@ -675,6 +831,36 @@ function updateBoardVisibility() {
   }
   if (board3dToggle) {
     board3dToggle.checked = show3d;
+  }
+  updateBoardSplitDisplay();
+}
+
+function updateSidebarVisibility() {
+  if (!sidebarColumnEl) return;
+  const open = ui.sidebarOpen;
+  sidebarColumnEl.classList.toggle('collapsed', !open);
+  if (sidebarOpenBtn) {
+    sidebarOpenBtn.style.display = open ? 'none' : 'inline-flex';
+    sidebarOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+}
+
+function updateBoardSplitDisplay() {
+  if (!board2dPaneEl || !board3dPaneEl || !boardColumnEl) return;
+  const show2d = ui.show2dBoard;
+  const show3d = ui.show3dBoard;
+  if (show2d && show3d) {
+    const ratio = clampBoardSplit(ui.boardSplit);
+    boardColumnEl.style.setProperty('--board-split', `${ratio * 100}%`);
+  } else if (show2d) {
+    boardColumnEl.style.setProperty('--board-split', '100%');
+  } else if (show3d) {
+    boardColumnEl.style.setProperty('--board-split', '0%');
+  }
+  board2dPaneEl.classList.toggle('hidden', !show2d);
+  board3dPaneEl.classList.toggle('hidden', !show3d);
+  if (boardResizerEl) {
+    boardResizerEl.style.display = show2d && show3d ? 'flex' : 'none';
   }
 }
 
