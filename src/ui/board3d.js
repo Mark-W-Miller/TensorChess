@@ -35,6 +35,8 @@ const pendingLoads = new Map();
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
 let requestRelayout = () => {};
+let materialMode = 'wooden';
+let currentBoardMesh = null;
 
 export function initBoard3D(container) {
   if (!container) return null;
@@ -63,21 +65,7 @@ export function initBoard3D(container) {
   directional.castShadow = true;
   scene.add(directional);
 
-  loadModel(BOARD_MODEL_PATH)
-    .then((template) => {
-      const boardMesh = template.clone(true);
-      centerMesh(boardMesh);
-      fitBoardToGrid(boardMesh);
-      updateBoardMetricsFromMesh(boardMesh);
-      boardBounds = new THREE.Box3().setFromObject(boardMesh);
-      scene.add(boardMesh);
-    })
-    .catch(() => {
-      const fallback = createFallbackBoard();
-      updateBoardMetricsFromMesh(fallback);
-      boardBounds = new THREE.Box3().setFromObject(fallback);
-      scene.add(fallback);
-    });
+  loadBoardModel();
 
   const pieceGroup = new THREE.Group();
   scene.add(pieceGroup);
@@ -134,6 +122,33 @@ export function initBoard3D(container) {
     renderer.setSize(clientWidth, clientHeight);
   }
 
+  function replaceBoardMesh(mesh) {
+    if (currentBoardMesh) {
+      scene.remove(currentBoardMesh);
+    }
+    currentBoardMesh = mesh;
+    boardBounds = new THREE.Box3().setFromObject(currentBoardMesh);
+    scene.add(currentBoardMesh);
+  }
+
+  function loadBoardModel() {
+    const targetMode = materialMode;
+    loadModel(BOARD_MODEL_PATH, targetMode)
+      .then((template) => {
+        if (targetMode !== materialMode) return;
+        const boardMesh = template.clone(true);
+        centerMesh(boardMesh);
+        fitBoardToGrid(boardMesh);
+        updateBoardMetricsFromMesh(boardMesh);
+        replaceBoardMesh(boardMesh);
+      })
+      .catch(() => {
+        const fallback = createFallbackBoard();
+        updateBoardMetricsFromMesh(fallback);
+        replaceBoardMesh(fallback);
+      });
+  }
+
   window.addEventListener('resize', resize);
 
   return {
@@ -145,6 +160,13 @@ export function initBoard3D(container) {
     hide: () => {
       container.style.display = 'none';
     },
+    setMaterialMode: (mode) => {
+      if (materialMode === mode) return;
+      materialMode = mode;
+      loadBoardModel();
+      requestRelayout();
+    },
+    getMaterialMode: () => materialMode,
   };
 }
 
@@ -195,50 +217,51 @@ function createBoardMetrics(width, depth, surfaceY, borderX = 0, borderZ = 0) {
   };
 }
 
-function loadModel(objPath) {
-  if (modelCache.has(objPath)) {
-    return Promise.resolve(modelCache.get(objPath));
+function loadModel(objPath, mode = materialMode) {
+  const cacheKey = `${objPath}|${mode}`;
+  if (modelCache.has(cacheKey)) {
+    return Promise.resolve(modelCache.get(cacheKey));
   }
-  if (pendingLoads.has(objPath)) {
-    return pendingLoads.get(objPath);
+  if (pendingLoads.has(cacheKey)) {
+    return pendingLoads.get(cacheKey);
   }
   const basePath = objPath.replace(/\.obj$/i, '');
-  const mtlPath = `${basePath}_wooden.mtl`;
+  const candidates = [`${basePath}_${mode}.mtl`, `${basePath}.mtl`];
   const promise = new Promise((resolve, reject) => {
-    mtlLoader.load(
-      mtlPath,
-      (materials) => {
-        materials.preload();
-        objLoader.setMaterials(materials);
-        objLoader.load(
+    const tryLoad = (index) => {
+      if (index >= candidates.length) {
+        new OBJLoader().load(
           objPath,
-          (obj) => {
-            finalizeLoad(objPath, obj, resolve);
-          },
+          (obj) => finalizeLoad(cacheKey, obj, resolve),
           undefined,
           (err) => {
-            pendingLoads.delete(objPath);
+            pendingLoads.delete(cacheKey);
             reject(err);
           },
         );
-      },
-      undefined,
-      () => {
-        objLoader.load(
-          objPath,
-          (obj) => {
-            finalizeLoad(objPath, obj, resolve);
-          },
-          undefined,
-          (err) => {
-            pendingLoads.delete(objPath);
-            reject(err);
-          },
-        );
-      },
-    );
+        return;
+      }
+      const mtlPath = candidates[index];
+      mtlLoader.load(
+        mtlPath,
+        (materials) => {
+          materials.preload();
+          const loader = new OBJLoader();
+          loader.setMaterials(materials);
+          loader.load(
+            objPath,
+            (obj) => finalizeLoad(cacheKey, obj, resolve),
+            undefined,
+            () => tryLoad(index + 1),
+          );
+        },
+        undefined,
+        () => tryLoad(index + 1),
+      );
+    };
+    tryLoad(0);
   });
-  pendingLoads.set(objPath, promise);
+  pendingLoads.set(cacheKey, promise);
   return promise;
 }
 

@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_ChessBoard_wooden.mtl
+mtllib GEO_ChessBoard_marble.mtl
 o GEO_ChessBoard
 v -0.275000 0.016940 0.275000
 v 0.275000 0.016940 0.275000

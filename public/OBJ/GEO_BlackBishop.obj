@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_BlackBishop_wooden.mtl
+mtllib GEO_BlackBishop_marble.mtl
 o GEO_BlackBishop_01
 v -0.000501 0.000000 -0.012145
 v 0.006497 0.000000 -0.010270

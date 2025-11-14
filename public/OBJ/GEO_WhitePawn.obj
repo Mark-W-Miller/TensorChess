@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhitePawn_wooden.mtl
+mtllib GEO_WhitePawn_marble.mtl
 o GEO_WhitePawn_08
 v 0.004915 0.038041 -0.004915
 v 0.002751 0.037362 -0.005589

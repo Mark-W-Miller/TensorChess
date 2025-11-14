@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhiteRook_wooden.mtl
+mtllib GEO_WhiteRook_marble.mtl
 o GEO_WhiteRook_02
 v -0.000000 0.000034 -0.017431
 v -0.015197 0.000806 -0.008774

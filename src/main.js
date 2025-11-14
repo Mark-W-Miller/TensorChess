@@ -32,6 +32,7 @@ const fitnessEl = document.getElementById('fitness-value');
 const analysisLogEl = document.getElementById('analysis-log');
 const board3dContainer = document.getElementById('board3d-container');
 const viewModeInputs = document.querySelectorAll('input[name="view-mode"]');
+const materialSelectEl = document.getElementById('material-select');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const blackMoveBtn = document.getElementById('black-move-btn');
@@ -125,6 +126,9 @@ const SCENARIOS = [
 
 const safeCells = createSafeCellMap();
 const board3d = board3dContainer ? initBoard3D(board3dContainer) : null;
+if (materialSelectEl && board3d?.getMaterialMode) {
+  materialSelectEl.value = board3d.getMaterialMode();
+}
 
 const SETTINGS_KEY = 'tensorchess:ui';
 const GAME_KEY = 'tensorchess:last-game';
@@ -204,6 +208,15 @@ function attachControls() {
   if (flipBtn) {
     flipBtn.addEventListener('click', () => {
       toggleBoardView();
+    });
+  }
+
+  if (materialSelectEl) {
+    materialSelectEl.addEventListener('change', (event) => {
+      const mode = event.target.value;
+      if (board3d?.setMaterialMode) {
+        board3d.setMaterialMode(mode);
+      }
     });
   }
 

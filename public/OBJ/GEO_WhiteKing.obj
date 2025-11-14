@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhiteKing_wooden.mtl
+mtllib GEO_WhiteKing_marble.mtl
 o GEO_WhiteKing
 v 0.000000 0.000083 -0.015988
 v 0.007994 0.000083 -0.013846

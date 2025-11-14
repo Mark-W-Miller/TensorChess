@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhiteKnight_wooden.mtl
+mtllib GEO_WhiteKnight_marble.mtl
 o GEO_WhiteKnight_02
 v 0.004213 0.047293 -0.014352
 v 0.004213 0.056201 -0.014556
