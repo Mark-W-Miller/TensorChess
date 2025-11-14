@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_BlackRook_01.mtl
+mtllib GEO_BlackRook_wooden.mtl
 o GEO_BlackRook_01
 v -0.000000 0.000034 -0.017431
 v -0.015197 0.000806 -0.008774

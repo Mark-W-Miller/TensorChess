@@ -1,7 +1,7 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhitePawn_08.mtl
-o GEO_WhitePawn_08
+mtllib GEO_BlackPawn_wooden.mtl
+o GEO_BlackPawn_01
 v 0.004915 0.038041 -0.004915
 v 0.002751 0.037362 -0.005589
 v 0.000000 0.037107 -0.005969
@@ -3501,7 +3501,7 @@ vt 0.099693 0.956782
 vt 0.095948 0.957600
 vt 0.760052 0.941614
 s 1
-usemtl MAT_WhiteWoodenChessPiece
+usemtl MAT_BlackWoodenChessPiece
 f 5/1/5 773/2/750 843/3/815 823/4/800
 f 773/2/750 1/5/1 774/6/751 843/3/815
 f 843/3/815 774/6/751 2/7/2 840/8/812

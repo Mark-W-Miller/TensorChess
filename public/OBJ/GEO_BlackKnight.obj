@@ -1,7 +1,7 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_WhiteKnight_02.mtl
-o GEO_WhiteKnight_02
+mtllib GEO_BlackKnight_wooden.mtl
+o GEO_BlackKnight_01
 v 0.004213 0.047293 -0.014352
 v 0.004213 0.056201 -0.014556
 v -0.004245 0.047295 -0.014355
@@ -4820,7 +4820,7 @@ vt 0.913921 0.455005
 vt 0.922095 0.458731
 vt 0.905549 0.451674
 s 1
-usemtl MAT_WhiteWoodenChessPiece
+usemtl MAT_BlackWoodenChessPiece
 f 234/1/226 877/2/829 679/3/655 52/4/52
 f 680/5/656 878/6/830 236/7/228 55/8/55
 f 24/9/24 562/10/538 877/2/829 234/1/226

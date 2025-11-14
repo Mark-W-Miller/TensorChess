@@ -10,18 +10,18 @@ const BOARD_MODEL_PATH = '/OBJ/GEO_ChessBoard.obj';
 
 const PIECE_MODEL_PATHS = {
   w: {
-    P: '/OBJ/GEO_WhitePawn_08.obj',
-    N: '/OBJ/GEO_WhiteKnight_02.obj',
-    B: '/OBJ/GEO_WhiteBishop_02.obj',
-    R: '/OBJ/GEO_WhiteRook_02.obj',
+    P: '/OBJ/GEO_WhitePawn.obj',
+    N: '/OBJ/GEO_WhiteKnight.obj',
+    B: '/OBJ/GEO_WhiteBishop.obj',
+    R: '/OBJ/GEO_WhiteRook.obj',
     Q: '/OBJ/GEO_WhiteQueen.obj',
     K: '/OBJ/GEO_WhiteKing.obj',
   },
   b: {
-    P: '/OBJ/GEO_BlackPawn_01.obj',
-    N: '/OBJ/GEO_BlackKnight_01.obj',
-    B: '/OBJ/GEO_BlackBishop_01.obj',
-    R: '/OBJ/GEO_BlackRook_01.obj',
+    P: '/OBJ/GEO_BlackPawn.obj',
+    N: '/OBJ/GEO_BlackKnight.obj',
+    B: '/OBJ/GEO_BlackBishop.obj',
+    R: '/OBJ/GEO_BlackRook.obj',
     Q: '/OBJ/GEO_BlackQueen.obj',
     K: '/OBJ/GEO_BlackKing.obj',
   },
@@ -203,7 +203,7 @@ function loadModel(objPath) {
     return pendingLoads.get(objPath);
   }
   const basePath = objPath.replace(/\.obj$/i, '');
-  const mtlPath = `${basePath}.mtl`;
+  const mtlPath = `${basePath}_wooden.mtl`;
   const promise = new Promise((resolve, reject) => {
     mtlLoader.load(
       mtlPath,

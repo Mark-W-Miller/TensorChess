@@ -1,6 +1,6 @@
 # Blender 4.3.2
 # www.blender.org
-mtllib GEO_BlackQueen.mtl
+mtllib GEO_BlackQueen_wooden.mtl
 o GEO_BlackQueen
 v -0.006607 0.034911 -0.003815
 v -0.007629 0.034911 0.000000
