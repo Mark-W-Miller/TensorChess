@@ -792,7 +792,7 @@ function persistSettings() {
 
 function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
-  return Math.min(2, Math.max(0.3, value));
+  return Math.min(2, Math.max(0.05, value));
 }
 
 function clampBoardSplit(value) {

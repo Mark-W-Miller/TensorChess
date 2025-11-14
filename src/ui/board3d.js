@@ -353,7 +353,7 @@ function clampUnit(value) {
 
 function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
-  if (value < 0.3) return 0.3;
+  if (value < 0.05) return 0.05;
   if (value > 2) return 2;
   return value;
 }
