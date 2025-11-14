@@ -18,10 +18,12 @@ import {
   BOARD_SIZE,
 } from './ui/board.js';
 import { computeHeat, drawHeatmap } from './ui/heatmap.js';
+import { initBoard3D } from './ui/board3d.js';
 import { drawVectors } from './ui/vectors.js';
 
 const boardCanvas = document.getElementById('board');
 const overlayCanvas = document.getElementById('overlay');
+const boardWrapEl = document.getElementById('board-wrap');
 const boardCtx = boardCanvas.getContext('2d');
 const overlayCtx = overlayCanvas.getContext('2d');
 const scenarioListEl = document.getElementById('scenario-list');
@@ -29,6 +31,8 @@ const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const fitnessEquationEl = document.getElementById('fitness-equation');
 const analysisLogEl = document.getElementById('analysis-log');
+const board3dContainer = document.getElementById('board3d-container');
+const viewModeInputs = document.querySelectorAll('input[name="view-mode"]');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const blackMoveBtn = document.getElementById('black-move-btn');
@@ -121,6 +125,7 @@ const SCENARIOS = [
 ];
 
 const safeCells = createSafeCellMap();
+const board3d = board3dContainer ? initBoard3D(board3dContainer) : null;
 
 const SETTINGS_KEY = 'tensorchess:ui';
 const GAME_KEY = 'tensorchess:last-game';
@@ -134,6 +139,7 @@ const ui = {
   flipped: persistedSettings.flipped ?? false,
   showHeat: persistedSettings.showHeat ?? true,
   showVectors: persistedSettings.showVectors ?? false,
+  viewMode: '2d',
   hoverIdx: null,
   movableSquares: new Set(),
   selected: null,
@@ -180,6 +186,7 @@ attachActionControls();
 updateActionButtons();
 renderCapturedPieces();
 prepareAutoResponseOptions();
+updateViewModeDisplay();
 render();
 
 function attachControls() {
@@ -200,6 +207,14 @@ function attachControls() {
       toggleBoardView();
     });
   }
+
+  viewModeInputs.forEach((input) => {
+    input.addEventListener('change', (event) => {
+      if (event.target.checked) {
+        setViewMode(event.target.value);
+      }
+    });
+  });
 
   heatToggle.addEventListener('change', (e) => {
     ui.showHeat = e.target.checked;
@@ -439,6 +454,10 @@ function render() {
   }
   drawKingFlashOverlay(overlayCtx);
 
+  if (board3d && ui.viewMode === '3d') {
+    board3d.updateBoard(boardState);
+  }
+
   updateBoardStatus(vectorState);
   updateFitnessDisplay(vectorState);
 }
@@ -482,6 +501,37 @@ function toggleBoardView(shouldRender = true) {
   if (shouldRender) {
     render();
   }
+}
+
+function setViewMode(mode) {
+  if (ui.viewMode === mode) return;
+  ui.viewMode = mode;
+  updateViewModeDisplay();
+  if (board3d && mode === '3d') {
+    board3d.updateBoard(game.board);
+  }
+  render();
+}
+
+function updateViewModeDisplay() {
+  const is3D = ui.viewMode === '3d';
+  if (boardWrapEl) {
+    boardWrapEl.style.display = is3D ? 'none' : 'block';
+  }
+  if (board3d) {
+    if (is3D) {
+      board3d.show();
+      board3d.updateBoard(game.board);
+    } else {
+      board3d.hide();
+    }
+  } else if (board3dContainer) {
+    board3dContainer.style.display = is3D ? 'block' : 'none';
+  }
+  boardCanvas.style.pointerEvents = is3D ? 'none' : 'auto';
+  viewModeInputs.forEach((input) => {
+    input.checked = input.value === ui.viewMode;
+  });
 }
 
 function collectMovableSquares(state) {

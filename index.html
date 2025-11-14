@@ -57,6 +57,12 @@
         flex-wrap: wrap;
         justify-content: center;
       }
+      .view-toggle {
+        display: flex;
+        gap: 0.75rem;
+        align-items: center;
+        font-size: 0.9rem;
+      }
 
       button,
       label {
@@ -103,6 +109,14 @@
         position: relative;
         width: 800px;
         height: 800px;
+      }
+      #board3d-container {
+        width: 800px;
+        height: 800px;
+        border-radius: 8px;
+        box-shadow: 0 10px 40px rgba(15, 23, 42, 0.8);
+        overflow: hidden;
+        display: none;
       }
       .safe-panel {
         width: 100%;
@@ -342,6 +356,11 @@
           <div id="board-wrap">
             <canvas id="board" width="800" height="800"></canvas>
             <canvas id="overlay" width="800" height="800"></canvas>
+          </div>
+          <div id="board3d-container"></div>
+          <div class="view-toggle">
+            <label><input type="radio" name="view-mode" value="2d" checked /> 2D View</label>
+            <label><input type="radio" name="view-mode" value="3d" /> 3D View</label>
           </div>
           <div class="fitness">
             <div id="fitness-value"></div>
