@@ -31,7 +31,6 @@ const scenarioInfoEl = document.getElementById('scenario-info');
 const fitnessEl = document.getElementById('fitness-value');
 const analysisLogEl = document.getElementById('analysis-log');
 const board3dContainer = document.getElementById('board3d-container');
-const viewModeInputs = document.querySelectorAll('input[name="view-mode"]');
 const materialSelectEl = document.getElementById('material-select');
 const layerButton = document.getElementById('layer-button');
 const layerMenu = document.getElementById('layer-menu');
@@ -43,6 +42,8 @@ const boardHudEl = document.getElementById('board3d-hud');
 const boardHudToggle = document.getElementById('board3d-hud-toggle');
 const heatBaseSlider = document.getElementById('heat-base-slider');
 const heatBaseValueEl = document.getElementById('heat-base-value');
+const board2dToggle = document.getElementById('toggle-2d-board');
+const board3dToggle = document.getElementById('toggle-3d-board');
 const perspectiveLabelEl = document.getElementById('perspective-label');
 const boardStatusDetailEl = document.getElementById('board-status-detail');
 const blackMoveBtn = document.getElementById('black-move-btn');
@@ -155,7 +156,8 @@ const ui = {
   heatBaseScale: clampHeatBaseScale(persistedSettings.heatBaseScale ?? 1),
   showAttackLayer: true,
   showSupportLayer: true,
-  viewMode: '2d',
+  show2dBoard: persistedSettings.show2dBoard ?? true,
+  show3dBoard: persistedSettings.show3dBoard ?? true,
   hoverIdx: null,
   movableSquares: new Set(),
   selected: null,
@@ -202,7 +204,7 @@ attachActionControls();
 updateActionButtons();
 renderCapturedPieces();
 prepareAutoResponseOptions();
-updateViewModeDisplay();
+updateBoardVisibility();
 render();
 
 function attachControls() {
@@ -249,14 +251,6 @@ function attachControls() {
     });
   }
 
-  viewModeInputs.forEach((input) => {
-    input.addEventListener('change', (event) => {
-      if (event.target.checked) {
-        setViewMode(event.target.value);
-      }
-    });
-  });
-
   heatToggle.addEventListener('change', (e) => {
     ui.showHeat = e.target.checked;
     syncLayerControls();
@@ -270,6 +264,24 @@ function attachControls() {
     persistSettings();
     render();
   });
+
+  if (board2dToggle) {
+    board2dToggle.checked = ui.show2dBoard;
+    board2dToggle.addEventListener('change', (event) => {
+      ui.show2dBoard = event.target.checked;
+      persistSettings();
+      updateBoardVisibility();
+    });
+  }
+
+  if (board3dToggle) {
+    board3dToggle.checked = ui.show3dBoard;
+    board3dToggle.addEventListener('change', (event) => {
+      ui.show3dBoard = event.target.checked;
+      persistSettings();
+      updateBoardVisibility();
+    });
+  }
 
   if (layerHeatToggle) {
     layerHeatToggle.addEventListener('change', (e) => {
@@ -345,7 +357,8 @@ function attachControls() {
 
 function attachPointerEvents() {
   boardCanvas.addEventListener('pointerdown', (event) => {
-    const idx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    const point = canvasPoint(event);
+    const idx = coordsToIndex(point.x, point.y, ui.flipped);
     if (idx === null) return;
     const piece = game.board[idx];
     if (!piece || piece[0] !== game.turn) return;
@@ -355,7 +368,7 @@ function attachPointerEvents() {
     drag.active = true;
     drag.from = idx;
     drag.piece = piece;
-    drag.pointer = { x: event.offsetX, y: event.offsetY };
+    drag.pointer = point;
     drag.hovered = idx;
     const moves = getLegalMoves(game, idx);
     drag.moveMap = new Map(moves.map((move) => [move.to, move]));
@@ -367,10 +380,11 @@ function attachPointerEvents() {
   });
 
   boardCanvas.addEventListener('pointermove', (event) => {
+    const point = canvasPoint(event);
     if (drag.active) {
       event.preventDefault();
-      drag.pointer = { x: event.offsetX, y: event.offsetY };
-      let idx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+      drag.pointer = point;
+      let idx = coordsToIndex(point.x, point.y, ui.flipped);
       if (drag.currentPromotionMove) {
         if (idx !== drag.currentPromotionMove.to) {
           idx = drag.currentPromotionMove.to;
@@ -388,7 +402,7 @@ function attachPointerEvents() {
       render();
       return;
     }
-    const idx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    const idx = coordsToIndex(point.x, point.y, ui.flipped);
     updateHoverState(idx);
   });
 
@@ -396,12 +410,13 @@ function attachPointerEvents() {
     if (!drag.active) return;
     event.preventDefault();
     releasePointer(event.pointerId);
-    let dropIdx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    const point = canvasPoint(event);
+    let dropIdx = coordsToIndex(point.x, point.y, ui.flipped);
     if (drag.currentPromotionMove) {
       dropIdx = drag.currentPromotionMove.to;
     }
     handleDrop(dropIdx);
-    const hoverIdx = coordsToIndex(event.offsetX, event.offsetY, ui.flipped);
+    const hoverIdx = coordsToIndex(point.x, point.y, ui.flipped);
     updateHoverState(hoverIdx);
   });
 
@@ -427,6 +442,19 @@ function attachPointerEvents() {
     if (drag.active || event.defaultPrevented) return;
     commitLastMoveVisuals();
   });
+}
+
+function canvasPoint(event) {
+  if (!boardCanvas) {
+    return { x: event.offsetX, y: event.offsetY };
+  }
+  const rect = boardCanvas.getBoundingClientRect();
+  const scaleX = boardCanvas.width / rect.width;
+  const scaleY = boardCanvas.height / rect.height;
+  return {
+    x: (event.clientX - rect.left) * scaleX,
+    y: (event.clientY - rect.top) * scaleY,
+  };
 }
 
 function updatePreviewForIndex(idx) {
@@ -568,7 +596,7 @@ function render() {
   }
   drawKingFlashOverlay(overlayCtx);
 
-  if (board3d && ui.viewMode === '3d') {
+  if (board3d && ui.show3dBoard) {
     board3d.updateBoard(boardState, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
   }
 
@@ -597,6 +625,8 @@ function persistSettings() {
     showHeat: ui.showHeat,
     showVectors: ui.showVectors,
     heatBaseScale: ui.heatBaseScale,
+    show2dBoard: ui.show2dBoard,
+    show3dBoard: ui.show3dBoard,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -610,6 +640,36 @@ function clampHeatBaseScale(value) {
   return Math.min(1.5, Math.max(0.5, value));
 }
 
+function updateBoardVisibility() {
+  const show2d = ui.show2dBoard;
+  const show3d = ui.show3dBoard;
+  if (boardWrapEl) {
+    boardWrapEl.style.display = show2d ? 'block' : 'none';
+  }
+  if (boardCanvas) {
+    boardCanvas.style.pointerEvents = show2d ? 'auto' : 'none';
+  }
+  if (overlayCanvas) {
+    overlayCanvas.style.display = show2d ? 'block' : 'none';
+  }
+  if (board3d) {
+    if (show3d) {
+      board3d.show();
+      board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
+    } else {
+      board3d.hide();
+    }
+  } else if (board3dContainer) {
+    board3dContainer.style.display = show3d ? 'block' : 'none';
+  }
+  if (board2dToggle) {
+    board2dToggle.checked = show2d;
+  }
+  if (board3dToggle) {
+    board3dToggle.checked = show3d;
+  }
+}
+
 function toggleBoardView(shouldRender = true) {
   ui.flipped = !ui.flipped;
   playerColor = ui.flipped ? 'b' : 'w';
@@ -621,37 +681,6 @@ function toggleBoardView(shouldRender = true) {
   if (shouldRender) {
     render();
   }
-}
-
-function setViewMode(mode) {
-  if (ui.viewMode === mode) return;
-  ui.viewMode = mode;
-  updateViewModeDisplay();
-  if (board3d && mode === '3d') {
-    board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
-  }
-  render();
-}
-
-function updateViewModeDisplay() {
-  const is3D = ui.viewMode === '3d';
-  if (boardWrapEl) {
-    boardWrapEl.style.display = is3D ? 'none' : 'block';
-  }
-  if (board3d) {
-    if (is3D) {
-      board3d.show();
-      board3d.updateBoard(game.board, { heatValues, showHeat: ui.showHeat, heatBaseScale: ui.heatBaseScale });
-    } else {
-      board3d.hide();
-    }
-  } else if (board3dContainer) {
-    board3dContainer.style.display = is3D ? 'block' : 'none';
-  }
-  boardCanvas.style.pointerEvents = is3D ? 'none' : 'auto';
-  viewModeInputs.forEach((input) => {
-    input.checked = input.value === ui.viewMode;
-  });
 }
 
 function collectMovableSquares(state) {
