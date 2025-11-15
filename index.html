@@ -46,6 +46,9 @@
         justify-content: center;
         position: relative;
       }
+      .board-column.single-3d {
+        grid-template-columns: 1fr;
+      }
       .board-pane {
         display: flex;
         justify-content: center;
@@ -255,6 +258,21 @@
         min-width: 260px;
         aspect-ratio: 1 / 1;
         border-radius: 12px;
+        display: flex;
+        align-items: stretch;
+        justify-content: stretch;
+      }
+      #board3d-container canvas {
+        width: 100% !important;
+        height: 100% !important;
+        display: block;
+      }
+      .board-column.single-3d #board3d-container {
+        aspect-ratio: 16 / 9;
+        height: auto;
+      }
+      .board-column.single-3d #board3d-pane {
+        grid-column: 1;
       }
       #board3d-container {
         box-shadow: 0 10px 40px rgba(15, 23, 42, 0.8);

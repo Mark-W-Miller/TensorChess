@@ -55,9 +55,9 @@ const simulationSpeedSlider = document.getElementById('simulation-speed');
 const sidebarColumnEl = document.getElementById('sidebar-column');
 const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
-const boardColumnEl = document.getElementById('board-column');
 const board2dPaneEl = document.getElementById('board2d-pane');
 const board3dPaneEl = document.getElementById('board3d-pane');
+const boardColumnEl = document.getElementById('board-column');
 const boardResizerEl = document.getElementById('board-resizer');
 const board2dToggle = document.getElementById('toggle-2d-board');
 const board3dToggle = document.getElementById('toggle-3d-board');
@@ -1002,6 +1002,9 @@ function updateBoardSplitDisplay() {
   board3dPaneEl.classList.toggle('hidden', !show3d);
   if (boardResizerEl) {
     boardResizerEl.style.display = show2d && show3d ? 'flex' : 'none';
+  }
+  if (boardColumnEl) {
+    boardColumnEl.classList.toggle('single-3d', show3d && !show2d);
   }
 }
 
