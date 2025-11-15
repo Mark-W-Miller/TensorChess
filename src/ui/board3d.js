@@ -432,15 +432,25 @@ function computeMoveDirections(board, piece, idx) {
   }
   if (type === 'P') {
     const dir = color === 'w' ? -1 : 1;
-    if (targetIndex(idx, 0, dir) !== -1) {
+    const rank = Math.floor(idx / 8);
+    const startRank = color === 'w' ? 6 : 1;
+    const forward = targetIndex(idx, 0, dir);
+    if (forward !== -1 && !board[forward]) {
       const vec = directionFromOffset(0, dir, 0.8);
       if (vec) directions.push(vec);
+      const doubleForward = targetIndex(idx, 0, dir * 2);
+      if (rank === startRank && doubleForward !== -1 && !board[doubleForward]) {
+        const vecDouble = directionFromOffset(0, dir * 2, 0.7);
+        if (vecDouble) directions.push(vecDouble);
+      }
     }
     [-1, 1].forEach((df) => {
-      if (targetIndex(idx, df, dir) !== -1) {
-        const vec = directionFromOffset(df, dir, 0.7);
-        if (vec) directions.push(vec);
-      }
+      const target = targetIndex(idx, df, dir);
+      if (target === -1) return;
+      const occupant = board[target];
+      if (!occupant || occupant[0] === color) return;
+      const vec = directionFromOffset(df, dir, 0.75);
+      if (vec) directions.push(vec);
     });
     return directions;
   }
