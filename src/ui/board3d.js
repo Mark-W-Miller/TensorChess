@@ -80,13 +80,7 @@ const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   side: THREE.DoubleSide,
   depthWrite: false,
 });
-const travelMaterial = new THREE.MeshBasicMaterial({
-  color: TRAVEL_COLOR,
-  transparent: true,
-  opacity: 0.65,
-  side: THREE.DoubleSide,
-  depthWrite: false,
-});
+const travelMaterial = createTravelMaterial();
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
 let requestRelayout = () => {};
@@ -447,6 +441,7 @@ function updateTravelStrip({ group, lastMove }) {
   mesh.position.set(mid.x, boardMetrics.surfaceY + TRAVEL_HEIGHT * 0.5, mid.z);
   mesh.quaternion.copy(quaternion);
   mesh.scale.set(length, TRAVEL_HEIGHT, width);
+  mesh.material.map.repeat.set(Math.max(1, length * 3), Math.max(1, width * 3));
 }
 
 function clearArrowGroup(group) {
@@ -540,6 +535,30 @@ function ensureTravelMesh(group) {
   mesh.visible = false;
   group.add(mesh);
   return mesh;
+}
+
+function createTravelMaterial() {
+  const canvas = document.createElement('canvas');
+  canvas.width = 16;
+  canvas.height = 16;
+  const ctx = canvas.getContext('2d');
+  ctx.fillStyle = '#facc15';
+  ctx.fillRect(0, 0, 16, 16);
+  ctx.fillStyle = '#0f172a';
+  ctx.fillRect(0, 0, 8, 8);
+  ctx.fillRect(8, 8, 8, 8);
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.wrapS = THREE.RepeatWrapping;
+  texture.wrapT = THREE.RepeatWrapping;
+  texture.anisotropy = 4;
+  return new THREE.MeshBasicMaterial({
+    color: 0xffffff,
+    transparent: true,
+    opacity: 0.8,
+    side: THREE.DoubleSide,
+    depthWrite: false,
+    map: texture,
+  });
 }
 
 function boardStateToGame(boardState) {
