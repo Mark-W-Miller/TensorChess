@@ -94,6 +94,8 @@ let boardBounds = null;
 let requestRelayout = () => {};
 let materialMode = 'wooden';
 let currentBoardMesh = null;
+let simulationMesh = null;
+let simulationPieceKey = null;
 
 export function initBoard3D(container) {
   if (!container) return null;
@@ -138,6 +140,9 @@ export function initBoard3D(container) {
   const travelGroup = new THREE.Group();
   travelGroup.renderOrder = 28;
   scene.add(travelGroup);
+  const simulationGroup = new THREE.Group();
+  simulationGroup.renderOrder = 30;
+  scene.add(simulationGroup);
   let travelMesh = null;
   const ringGroup = new THREE.Group();
   ringGroup.renderOrder = 30;
@@ -168,6 +173,7 @@ export function initBoard3D(container) {
       vectorHeightScale: options.vectorHeightScale,
       moveRingHeightScale: options.moveRingHeightScale,
       vectorState: options.vectorState ?? boardStateToGame(board),
+      simulationAnimation: options.simulationAnimation ?? null,
     };
     lastBoardState = board;
     lastBoardOptions = mergedOptions;
@@ -219,7 +225,12 @@ export function initBoard3D(container) {
     });
     updateTravelStrip({
       group: travelGroup,
-      lastMove: mergedOptions.vectorState?.lastMove ?? null,
+      animation: mergedOptions.simulationAnimation,
+    });
+    updateSimulationPiece({
+      group: simulationGroup,
+      animation: mergedOptions.simulationAnimation,
+      token,
     });
   }
 
@@ -421,6 +432,50 @@ function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
   });
 }
 
+function updateSimulationPiece({ group, animation, token }) {
+  if (!group) return;
+  group.visible = Boolean(animation);
+  if (!animation) {
+    if (simulationMesh) simulationMesh.visible = false;
+    return;
+  }
+  const pieceKey = animation.piece;
+  if (!simulationMesh || simulationPieceKey !== pieceKey) {
+    simulationPieceKey = pieceKey;
+    simulationMesh = null;
+    const modelPath = PIECE_MODEL_PATHS[pieceKey[0]]?.[pieceKey[1]];
+    if (!modelPath) return;
+    loadModel(modelPath)
+      .then((template) => {
+        if (token !== updateToken) return;
+        const mesh = template.clone(true);
+        mesh.traverse((child) => {
+          if (child.isMesh) {
+            child.castShadow = true;
+          }
+        });
+        scalePieceMesh(mesh);
+        group.add(mesh);
+        simulationMesh = mesh;
+        simulationPieceKey = pieceKey;
+        positionSimulationMesh(animation);
+      })
+      .catch(() => {});
+    return;
+  }
+  positionSimulationMesh(animation);
+}
+
+function positionSimulationMesh(animation) {
+  if (!simulationMesh) return;
+  const from = squarePosition3D(animation.fromIdx);
+  const to = squarePosition3D(animation.toIdx);
+  const pos = from.clone().lerp(to, animation.progress ?? 0);
+  pos.y = boardMetrics.surfaceY + 0.02;
+  simulationMesh.visible = true;
+  simulationMesh.position.copy(pos);
+}
+
 function createArrowMesh(start, end, thickness, color, opacity = 0.75) {
   const direction = end.clone().sub(start);
   const length = direction.length();
@@ -451,9 +506,9 @@ function createArrowMesh(start, end, thickness, color, opacity = 0.75) {
   return arrowGroup;
 }
 
-function updateTravelStrip({ group, lastMove }) {
+function updateTravelStrip({ group, animation }) {
   if (!group) return;
-  if (!lastMove) {
+  if (!animation) {
     group.visible = false;
     if (group.children[0]) {
       group.children[0].visible = false;
@@ -462,19 +517,22 @@ function updateTravelStrip({ group, lastMove }) {
   }
   group.visible = true;
   const mesh = ensureTravelMesh(group);
-  const from = squarePosition3D(lastMove.from);
-  const to = squarePosition3D(lastMove.to);
-  const mid = from.clone().add(to).multiplyScalar(0.5);
-  const delta = to.clone().sub(from).setY(0);
+  const from = squarePosition3D(animation.fromIdx);
+  const to = squarePosition3D(animation.toIdx);
+  const current = from.clone().lerp(to, animation.progress ?? 0);
+  const delta = current.clone().sub(from).setY(0);
   const length = Math.max(delta.length(), 0.001);
   const width = Math.max(Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * 0.25, 0.05);
   const dir = delta.clone().normalize();
   const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+  const mid = from.clone().add(current).multiplyScalar(0.5);
   mesh.visible = true;
   mesh.position.set(mid.x, boardMetrics.surfaceY + TRAVEL_HEIGHT * 0.5, mid.z);
   mesh.quaternion.copy(quaternion);
   mesh.scale.set(length, TRAVEL_HEIGHT, width);
-  mesh.material.map.repeat.set(Math.max(1, length * 3), Math.max(1, width * 3));
+  if (mesh.material.map) {
+    mesh.material.map.repeat.set(Math.max(1, length * 3), Math.max(1, width * 3));
+  }
 }
 
 function clearArrowGroup(group) {

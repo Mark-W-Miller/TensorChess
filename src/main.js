@@ -291,6 +291,14 @@ function attachControls() {
         showMoveRings: ui.showMoveRings3d,
         showAttackVectors: ui.showAttack3d,
         vectorState: drag.active ? drag.previewState ?? game : game,
+        simulationAnimation: simulation.animation
+          ? {
+              piece: simulation.animation.piece,
+              fromIdx: simulation.animation.move.from,
+              toIdx: simulation.animation.move.to,
+              progress: simulation.animation.progress,
+            }
+          : null,
       });
     }
   };
@@ -839,6 +847,14 @@ function render() {
       showMoveRings: ui.showMoveRings3d,
       showAttackVectors: ui.showAttack3d,
       vectorState,
+      simulationAnimation: simulation.animation
+        ? {
+            piece: simulation.animation.piece,
+            fromIdx: simulation.animation.move.from,
+            toIdx: simulation.animation.move.to,
+            progress: simulation.animation.progress,
+          }
+        : null,
     });
   }
 
@@ -877,6 +893,7 @@ function persistSettings() {
     boardSplit: ui.boardSplit,
     vectorHeightScale: ui.vectorHeightScale,
     moveRingHeightScale: ui.moveRingHeightScale,
+    simulationSpeed: ui.simulationSpeed,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
