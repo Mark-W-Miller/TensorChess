@@ -50,6 +50,8 @@ const vectorHeightSlider = document.getElementById('vector-height-slider');
 const vectorHeightValueEl = document.getElementById('vector-height-value');
 const vectorOffsetSlider = document.getElementById('vector-offset-slider');
 const vectorOffsetValueEl = document.getElementById('vector-offset-value');
+const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
+const simulationSpeedSlider = document.getElementById('simulation-speed');
 const sidebarColumnEl = document.getElementById('sidebar-column');
 const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
@@ -175,6 +177,7 @@ const ui = {
   heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
+  simulationSpeed: clampSimulationSpeed(persistedSettings.simulationSpeed ?? 30),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
   sidebarOpen: persistedSettings.sidebarOpen ?? true,
@@ -210,6 +213,14 @@ const drag = {
   hoverTimerId: null,
   autoTimerId: null,
   autoSequence: null,
+};
+
+const simulation = {
+  active: false,
+  animation: null,
+  rafId: null,
+  pendingMove: null,
+  stepTimeoutId: null,
 };
 
 const playerUndoStack = [];
@@ -268,6 +279,7 @@ function attachControls() {
   updateHeatHeightControls();
   updateVectorHeightControls();
   updateVectorOffsetControls();
+  updateSimulationControls();
   const refresh3DView = () => {
     if (board3d && ui.show3dBoard) {
       board3d.updateBoard(game.board, {
@@ -407,6 +419,21 @@ function attachControls() {
       refresh3DView();
     });
   }
+  if (simulationSpeedSlider) {
+    simulationSpeedSlider.addEventListener('input', (event) => {
+      const nextValue = clampSimulationSpeed(parseInt(event.target.value, 10));
+      if (!Number.isFinite(nextValue)) return;
+      ui.simulationSpeed = nextValue;
+      persistSettings();
+      updateSimulationControls();
+    });
+  }
+  if (simulationToggleBtn) {
+    simulationToggleBtn.addEventListener('click', () => {
+      toggleSimulation();
+      updateSimulationControls();
+    });
+  }
   if (boardResizerEl && boardColumnEl) {
     let resizing = false;
     let activePointer = null;
@@ -542,6 +569,10 @@ function attachControls() {
 
 function attachPointerEvents() {
   boardCanvas.addEventListener('pointerdown', (event) => {
+    if (simulation.active) {
+      stopSimulation();
+      updateSimulationControls();
+    }
     const point = canvasPoint(event);
     const idx = coordsToIndex(point.x, point.y, ui.flipped);
     if (idx === null) return;
@@ -746,7 +777,17 @@ function releasePointer(pointerId) {
 
 function render() {
   const previewState = drag.active ? drag.previewState : null;
-  const boardState = previewState ? previewState.board : game.board;
+  let boardState = previewState ? previewState.board : game.board;
+  let simulationOverlay = null;
+  if (!previewState && simulation.animation) {
+    boardState = boardState.slice();
+    const { move, capturedPiece } = simulation.animation;
+    boardState[move.from] = null;
+    if (capturedPiece) {
+      boardState[move.to] = null;
+    }
+    simulationOverlay = simulation.animation;
+  }
   const vectorState = previewState ?? game;
   const movableSquares = previewState ? collectMovableSquares(vectorState) : ui.movableSquares;
   const checkmatedColor = previewState ? detectCheckmate(vectorState) : ui.checkmatedColor;
@@ -779,6 +820,9 @@ function render() {
     const ghostPos = drag.snapPoint ?? drag.pointer;
     const ghostPiece = drag.previewPiece ?? drag.piece;
     drawDragGhost(overlayCtx, ghostPiece, ghostPos);
+  }
+  if (simulationOverlay) {
+    drawSimulationOverlay(overlayCtx, simulationOverlay);
   }
   if (drag.currentPromotionMove && drag.promotionOptions.length) {
     drawPromotionOptions(overlayCtx);
@@ -856,6 +900,11 @@ function clampMoveRingHeightScale(value) {
   return Math.min(1, Math.max(0.05, value));
 }
 
+function clampSimulationSpeed(value) {
+  if (!Number.isFinite(value)) return 30;
+  return Math.min(60, Math.max(1, value));
+}
+
 function clampBoardSplit(value) {
   if (!Number.isFinite(value)) return 0.5;
   return Math.min(0.85, Math.max(0.15, value));
@@ -907,6 +956,15 @@ function updateSidebarVisibility() {
   if (sidebarOpenBtn) {
     sidebarOpenBtn.style.display = open ? 'none' : 'inline-flex';
     sidebarOpenBtn.setAttribute('aria-expanded', open ? 'true' : 'false');
+  }
+}
+
+function updateSimulationControls() {
+  if (simulationSpeedSlider) {
+    simulationSpeedSlider.value = ui.simulationSpeed.toString();
+  }
+  if (simulationToggleBtn) {
+    simulationToggleBtn.textContent = simulation.active ? 'Stop Simulation' : 'Run Simulation';
   }
 }
 
@@ -1446,6 +1504,117 @@ function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHove
   }
 }
 
+function toggleSimulation() {
+  if (simulation.active) {
+    stopSimulation();
+  } else {
+    startSimulation();
+  }
+}
+
+function startSimulation() {
+  if (simulation.active) return;
+  simulation.active = true;
+  cancelAutoSequence({ clearBase: true });
+  updateSimulationControls();
+  queueSimulationMove();
+}
+
+function stopSimulation() {
+  simulation.active = false;
+  if (simulation.stepTimeoutId) {
+    clearTimeout(simulation.stepTimeoutId);
+    simulation.stepTimeoutId = null;
+  }
+  if (simulation.rafId) {
+    cancelAnimationFrame(simulation.rafId);
+    simulation.rafId = null;
+  }
+  simulation.animation = null;
+  updateSimulationControls();
+}
+
+function queueSimulationMove() {
+  if (!simulation.active || simulation.animation) return;
+  const moves = collectAutoMoves(game, game.turn);
+  if (!moves.length) {
+    stopSimulation();
+    return;
+  }
+  startSimulationAnimation(moves[0]);
+}
+
+function startSimulationAnimation(move) {
+  const from = squareCenter(move.from, ui.flipped);
+  const to = squareCenter(move.to, ui.flipped);
+  const boardRef = drag.previewState?.board ?? game.board;
+  const piece = boardRef[move.from];
+  const capturedPiece = boardRef[move.to];
+  const distance = Math.hypot(to.x - from.x, to.y - from.y) || SQUARE_SIZE;
+  const duration = computeSimulationDuration(distance);
+  simulation.animation = {
+    move,
+    piece,
+    capturedPiece,
+    from,
+    to,
+    start: null,
+    duration,
+    progress: 0,
+  };
+  simulation.rafId = requestAnimationFrame(stepSimulationAnimation);
+}
+
+function stepSimulationAnimation(timestamp) {
+  if (!simulation.animation) return;
+  if (simulation.animation.start === null) {
+    simulation.animation.start = timestamp;
+  }
+  const elapsed = timestamp - simulation.animation.start;
+  const progress = Math.min(1, elapsed / simulation.animation.duration);
+  simulation.animation.progress = progress;
+  render();
+  if (progress < 1) {
+    simulation.rafId = requestAnimationFrame(stepSimulationAnimation);
+  } else {
+    simulation.rafId = null;
+    finishSimulationAnimation();
+  }
+}
+
+function finishSimulationAnimation() {
+  const anim = simulation.animation;
+  if (!anim) return;
+  simulation.animation = null;
+  applySimulationMove(anim.move);
+  if (simulation.active) {
+    simulation.stepTimeoutId = setTimeout(queueSimulationMove, 250);
+  }
+}
+
+function applySimulationMove(move) {
+  playerUndoStack.push(cloneState(game));
+  const actor = game.turn === 'w' ? 'White' : 'Black';
+  game = makeMove(game, move);
+  ui.movableSquares = collectMovableSquares(game);
+  ui.checkmatedColor = detectCheckmate(game);
+  appendAnalysisEntry({
+    actor: `Simulation (${actor})`,
+    description: describeMove(move),
+  });
+  heatValues = computeHeat(game, { color: playerColor });
+  renderCapturedPieces();
+  prepareAutoResponseOptions();
+  render();
+}
+
+function computeSimulationDuration(distance) {
+  const steps = clampSimulationSpeed(ui.simulationSpeed);
+  const perSquare = 90;
+  const base = 300;
+  return Math.max(200, base + (distance / SQUARE_SIZE) * perSquare * (steps / 30));
+}
+
 function triggerKingFlashIfNeeded(lastMove) {
   if (!lastMove || !lastMove.captured) return;
   const opponentColor = lastMove.captured[0];
@@ -1476,6 +1645,22 @@ function triggerKingFlash(state, color) {
   kingFlashTimeout = setTimeout(() => {
     clearKingFlash();
   }, 1200);
+}
+
+function drawSimulationOverlay(ctx, animation) {
+  if (!animation) return;
+  const { piece, from, to, progress } = animation;
+  const x = from.x + (to.x - from.x) * progress;
+  const y = from.y + (to.y - from.y) * progress;
+  ctx.save();
+  ctx.strokeStyle = 'rgba(250, 204, 21, 0.8)';
+  ctx.lineWidth = 6;
+  ctx.beginPath();
+  ctx.moveTo(from.x, from.y);
+  ctx.lineTo(x, y);
+  ctx.stroke();
+  ctx.restore();
+  drawDragGhost(ctx, piece, { x, y });
 }
 
 function clearKingFlash() {
