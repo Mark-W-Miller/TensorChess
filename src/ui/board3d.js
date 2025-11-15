@@ -231,6 +231,7 @@ export function initBoard3D(container) {
       state: mergedOptions.vectorState,
       showAttackVectors: mergedOptions.showAttackVectors,
       heightScale: mergedOptions.vectorHeightScale,
+      vectorScale: mergedOptions.vectorScale,
     });
     updateTravelStrip({
       group: travelGroup,
@@ -407,7 +408,7 @@ function updateMoveRings({ group, state, showMoveRings, heightScale, lengthScale
   });
 }
 
-function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
+function updateAttackVectors({ group, state, showAttackVectors, heightScale, vectorScale = 1 }) {
   if (!group || !state) return;
   group.visible = Boolean(showAttackVectors);
   clearArrowGroup(group);
@@ -430,13 +431,14 @@ function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
       end.y = baseHeight;
       const length = end.clone().sub(start).length();
       if (length < 0.1) return;
-      const targetValue = PIECE_VALUE[occupant[1]] || 1;
-      const thickness = 0.05 + Math.min(0.4, targetValue / 12);
-      const opacity = 0.45 + Math.min(0.4, targetValue / 15);
-      const arrow = createArrowMesh(start, end, thickness, color, opacity);
-      if (arrow) {
-        group.add(arrow);
-      }
+      const targetValue = (PIECE_VALUE[occupant[1]] || 1) * vectorScale;
+      const sourceValue = (PIECE_VALUE[piece[1]] || 1) * vectorScale;
+      const radiusTarget = 0.05 + Math.min(0.8, targetValue / 10);
+      const radiusSource = 0.02 + Math.min(0.4, sourceValue / 12);
+              const arrow = createArrowMesh(start, end, radiusSource, radiusTarget, color);
+              if (arrow) {
+                group.add(arrow);
+              }
     });
   });
 }
@@ -498,30 +500,35 @@ function positionSimulationMesh(animation) {
   simulationMesh.position.copy(pos);
 }
 
-function createArrowMesh(start, end, thickness, color, opacity = 0.75) {
+function createArrowMesh(start, end, sourceRadius, targetRadius, color) {
   const direction = end.clone().sub(start);
   const length = direction.length();
   if (length <= 0.01) return null;
   direction.normalize();
-  const scaledThickness = thickness * 0.1;
-  const headLength = Math.min(length * 0.3, 0.4);
-  const bodyLength = Math.max(length - headLength, 0.02);
-  const radius = Math.max(0.01, scaledThickness * 0.5);
-  const material = new THREE.MeshBasicMaterial({
+  const coneHeight = Math.max(0.05, length * 0.7);
+  const shaftMaterial = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
-    opacity,
+    opacity: 0.65,
     depthWrite: false,
   });
-  const bodyGeometry = new THREE.CylinderGeometry(radius, radius, bodyLength, 10, 1, true);
-  const headGeometry = new THREE.ConeGeometry(Math.max(0.015, radius * 1.2), headLength, 10, 1);
-  const body = new THREE.Mesh(bodyGeometry, material);
-  const head = new THREE.Mesh(headGeometry, material.clone());
-  body.position.y = bodyLength / 2;
-  head.position.y = bodyLength + headLength / 2;
+  const sphereMaterial = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity: 0.85,
+    depthWrite: false,
+  });
+  const coneGeometry = new THREE.CylinderGeometry(targetRadius, sourceRadius, coneHeight, 14, 1, true);
+  const sphereFront = new THREE.Mesh(new THREE.SphereGeometry(targetRadius, 14, 14), sphereMaterial);
+  const sphereBack = new THREE.Mesh(new THREE.SphereGeometry(sourceRadius, 14, 14), sphereMaterial);
+  const cone = new THREE.Mesh(coneGeometry, shaftMaterial);
+  cone.position.y = coneHeight / 2;
+  sphereFront.position.y = coneHeight;
+  sphereBack.position.y = 0;
   const arrowGroup = new THREE.Group();
-  arrowGroup.add(body);
-  arrowGroup.add(head);
+  arrowGroup.add(cone);
+  arrowGroup.add(sphereFront);
+  arrowGroup.add(sphereBack);
   const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
   arrowGroup.quaternion.copy(quaternion);
   arrowGroup.position.copy(start);

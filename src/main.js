@@ -50,6 +50,8 @@ const vectorHeightSlider = document.getElementById('vector-height-slider');
 const vectorHeightValueEl = document.getElementById('vector-height-value');
 const vectorOffsetSlider = document.getElementById('vector-offset-slider');
 const vectorOffsetValueEl = document.getElementById('vector-offset-value');
+const vectorScaleSlider = document.getElementById('vector-scale-slider');
+const vectorScaleValueEl = document.getElementById('vector-scale-value');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationSpeedSlider = document.getElementById('simulation-speed');
 const sidebarColumnEl = document.getElementById('sidebar-column');
@@ -177,6 +179,7 @@ const ui = {
   heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
+  vectorScale: clampVectorScale(persistedSettings.vectorScale ?? 1),
   simulationSpeed: clampSimulationSpeed(persistedSettings.simulationSpeed ?? 30),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
@@ -276,9 +279,18 @@ function attachControls() {
       vectorOffsetValueEl.textContent = `${Math.round(ui.moveRingHeightScale * 100)}%`;
     }
   };
+  const updateVectorScaleControls = () => {
+    if (vectorScaleSlider) {
+      vectorScaleSlider.value = ui.vectorScale.toFixed(2);
+    }
+    if (vectorScaleValueEl) {
+      vectorScaleValueEl.textContent = `${Math.round(ui.vectorScale * 100)}%`;
+    }
+  };
   updateHeatHeightControls();
   updateVectorHeightControls();
   updateVectorOffsetControls();
+  updateVectorScaleControls();
   updateSimulationControls();
   const refresh3DView = () => {
     if (board3d && ui.show3dBoard) {
@@ -413,6 +425,16 @@ function attachControls() {
       if (!Number.isFinite(nextValue)) return;
       ui.vectorHeightScale = nextValue;
       updateVectorHeightControls();
+      persistSettings();
+      refresh3DView();
+    });
+  }
+  if (vectorScaleSlider) {
+    vectorScaleSlider.addEventListener('input', (event) => {
+      const nextValue = clampVectorScale(parseFloat(event.target.value));
+      if (!Number.isFinite(nextValue)) return;
+      ui.vectorScale = nextValue;
+      updateVectorScaleControls();
       persistSettings();
       refresh3DView();
     });
@@ -847,6 +869,7 @@ function render() {
       moveRingHeightScale: ui.moveRingHeightScale,
       showMoveRings: ui.showMoveRings3d,
       showAttackVectors: ui.showAttack3d,
+      vectorScale: ui.vectorScale,
       vectorState,
       simulationAnimation: simulation.animation
         ? {
@@ -894,6 +917,7 @@ function persistSettings() {
     boardSplit: ui.boardSplit,
     vectorHeightScale: ui.vectorHeightScale,
     moveRingHeightScale: ui.moveRingHeightScale,
+    vectorScale: ui.vectorScale,
     simulationSpeed: ui.simulationSpeed,
   };
   try {
@@ -916,6 +940,11 @@ function clampVectorHeightScale(value) {
 function clampMoveRingHeightScale(value) {
   if (!Number.isFinite(value)) return 0.2;
   return Math.min(1, Math.max(0.05, value));
+}
+
+function clampVectorScale(value) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(2, Math.max(0.2, value));
 }
 
 function clampSimulationSpeed(value) {
@@ -950,6 +979,7 @@ function updateBoardVisibility() {
         vectorHeightScale: ui.vectorHeightScale,
         showMoveRings: ui.showMoveRings3d,
         showAttackVectors: ui.showAttack3d,
+        vectorScale: ui.vectorScale,
         vectorState: game,
       });
     } else {
