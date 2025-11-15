@@ -152,6 +152,13 @@ const SCENARIOS = [
     description: 'Black pawn on d2 promotes when you advance to d1.',
     fen: '4K3/8/8/8/8/8/3p4/4k3 b - - 0 1',
   },
+  {
+    id: 'corner-phalanx',
+    name: 'Corner Phalanx',
+    description:
+      'Kings tucked in the corner with rooks hugging them, queens on the diagonal, knights and bishops pushed outward, and a wall of white pawns on the 5th rank.',
+    fen: '5nrk/3pp1qr/2p1bpbn/pp4pp/PP4PP/BNP2P2/RQBPP3/KRN5 w - - 0 1',
+  },
 ];
 
 const safeCells = createSafeCellMap();
@@ -179,7 +186,7 @@ const ui = {
   heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
-  vectorScale: clampVectorScale(persistedSettings.vectorScale ?? 1),
+  vectorScale: clampVectorScale(persistedSettings.vectorScale ?? 0.5),
   simulationSpeed: clampSimulationSpeed(persistedSettings.simulationSpeed ?? 30),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
@@ -297,16 +304,17 @@ function attachControls() {
       board3d.updateBoard(game.board, {
         heatValues,
         showHeat: ui.showHeat3d,
-        heatHeightScale: ui.heatHeightScale,
-        vectorHeightScale: ui.vectorHeightScale,
-        moveRingHeightScale: ui.moveRingHeightScale,
-        showMoveRings: ui.showMoveRings3d,
-        showAttackVectors: ui.showAttack3d,
-        vectorState: drag.active ? drag.previewState ?? game : game,
-        simulationAnimation: simulation.animation
-          ? {
-              piece: simulation.animation.piece,
-              fromIdx: simulation.animation.move.from,
+      heatHeightScale: ui.heatHeightScale,
+      vectorHeightScale: ui.vectorHeightScale,
+      moveRingHeightScale: ui.moveRingHeightScale,
+      showMoveRings: ui.showMoveRings3d,
+      showAttackVectors: ui.showAttack3d,
+      vectorScale: ui.vectorScale,
+      vectorState: drag.active ? drag.previewState ?? game : game,
+      simulationAnimation: simulation.animation
+        ? {
+            piece: simulation.animation.piece,
+            fromIdx: simulation.animation.move.from,
               toIdx: simulation.animation.move.to,
               progress: simulation.animation.progress,
             }
@@ -987,6 +995,10 @@ function updateBoardVisibility() {
     }
   } else if (board3dContainer) {
     board3dContainer.style.display = show3d ? 'block' : 'none';
+  }
+  if (boardHudEl) {
+    boardHudEl.style.display = show3d ? 'flex' : 'none';
+    boardHudEl.style.visibility = show3d ? 'visible' : 'hidden';
   }
   if (board2dToggle) {
     board2dToggle.checked = show2d;

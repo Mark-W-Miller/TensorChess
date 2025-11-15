@@ -104,7 +104,7 @@ export function initBoard3D(container) {
   scene.background = new THREE.Color(0x0f172a);
 
   const camera = new THREE.PerspectiveCamera(45, container.clientWidth / container.clientHeight, 0.1, 100);
-  camera.position.set(5.5, 6.5, 5.5);
+  camera.position.set(5.5, 9, 5.5);
 
   const renderer = new THREE.WebGLRenderer({ antialias: true });
   renderer.setSize(container.clientWidth, container.clientHeight);
@@ -112,10 +112,15 @@ export function initBoard3D(container) {
   container.appendChild(renderer.domElement);
 
   const controls = new OrbitControls(camera, renderer.domElement);
-  controls.enablePan = false;
+  controls.enablePan = true;
+  controls.mouseButtons = {
+    LEFT: THREE.MOUSE.ROTATE,
+    MIDDLE: THREE.MOUSE.DOLLY,
+    RIGHT: THREE.MOUSE.PAN,
+  };
   controls.minDistance = 4;
   controls.maxDistance = 30;
-  controls.target.set(0, 0, 0);
+  controls.target.set(0, 0.4, 0);
   controls.update();
 
   const ambient = new THREE.AmbientLight(0x94a3b8, 0.6);
@@ -165,6 +170,7 @@ export function initBoard3D(container) {
 
   function updateBoard(board, options = {}) {
     if (!board) return;
+    const previousOptions = lastBoardOptions || {};
     const mergedOptions = {
       showHeat: options.showHeat ?? true,
       heatValues: options.heatValues,
@@ -173,6 +179,7 @@ export function initBoard3D(container) {
       showAttackVectors: options.showAttackVectors ?? false,
       vectorHeightScale: options.vectorHeightScale,
       moveRingHeightScale: options.moveRingHeightScale,
+      vectorScale: options.vectorScale ?? previousOptions.vectorScale ?? 0.5,
       vectorState: options.vectorState ?? boardStateToGame(board),
       simulationAnimation: options.simulationAnimation ?? null,
     };
@@ -269,11 +276,13 @@ export function initBoard3D(container) {
         centerMesh(boardMesh);
         fitBoardToGrid(boardMesh);
         updateBoardMetricsFromMesh(boardMesh);
+        updateCameraTarget();
         replaceBoardMesh(boardMesh);
       })
       .catch(() => {
         const fallback = createFallbackBoard();
         updateBoardMetricsFromMesh(fallback);
+        updateCameraTarget();
         replaceBoardMesh(fallback);
       });
   }
@@ -297,6 +306,12 @@ export function initBoard3D(container) {
     },
     getMaterialMode: () => materialMode,
   };
+
+  function updateCameraTarget() {
+    const targetY = (boardMetrics?.surfaceY ?? 0) + 0.4;
+    controls.target.set(0, targetY, 0);
+    controls.update();
+  }
 }
 
 function placePieceOnBoard(mesh, file, rank) {
@@ -408,7 +423,7 @@ function updateMoveRings({ group, state, showMoveRings, heightScale, lengthScale
   });
 }
 
-function updateAttackVectors({ group, state, showAttackVectors, heightScale, vectorScale = 1 }) {
+function updateAttackVectors({ group, state, showAttackVectors, heightScale, vectorScale = 0.5 }) {
   if (!group || !state) return;
   group.visible = Boolean(showAttackVectors);
   clearArrowGroup(group);
@@ -505,7 +520,7 @@ function createArrowMesh(start, end, sourceRadius, targetRadius, color) {
   const length = direction.length();
   if (length <= 0.01) return null;
   direction.normalize();
-  const coneHeight = Math.max(0.05, length * 0.7);
+  const coneHeight = Math.max(0.05, length);
   const shaftMaterial = new THREE.MeshBasicMaterial({
     color,
     transparent: true,
