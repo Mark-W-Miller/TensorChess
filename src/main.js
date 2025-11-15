@@ -785,14 +785,15 @@ function releasePointer(pointerId) {
 
 function render() {
   const previewState = drag.active ? drag.previewState : null;
-  let boardState = previewState ? previewState.board : game.board;
+  const boardState3d = previewState ? previewState.board : game.board;
+  let boardState2d = boardState3d;
   let simulationOverlay = null;
   if (!previewState && simulation.animation) {
-    boardState = boardState.slice();
+    boardState2d = boardState3d.slice();
     const { move, capturedPiece } = simulation.animation;
-    boardState[move.from] = null;
+    boardState2d[move.from] = null;
     if (capturedPiece) {
-      boardState[move.to] = null;
+      boardState2d[move.to] = null;
     }
     simulationOverlay = simulation.animation;
   }
@@ -801,7 +802,7 @@ function render() {
   const checkmatedColor = previewState ? detectCheckmate(vectorState) : ui.checkmatedColor;
   const threatLevels = computeThreatLevels(vectorState.board);
   drawBoard(boardCtx, {
-    board: boardState,
+    board: boardState2d,
     flipped: ui.flipped,
     selected: ui.selected,
     legalTargets: ui.legalTargets,
@@ -838,7 +839,7 @@ function render() {
   drawKingFlashOverlay(overlayCtx);
 
   if (board3d && ui.show3dBoard) {
-    board3d.updateBoard(boardState, {
+    board3d.updateBoard(boardState3d, {
       heatValues,
       showHeat: ui.showHeat3d,
       heatHeightScale: ui.heatHeightScale,

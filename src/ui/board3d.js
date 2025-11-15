@@ -96,6 +96,7 @@ let materialMode = 'wooden';
 let currentBoardMesh = null;
 let simulationMesh = null;
 let simulationPieceKey = null;
+let simulationMeshLoading = null;
 
 export function initBoard3D(container) {
   if (!container) return null;
@@ -182,7 +183,15 @@ export function initBoard3D(container) {
       const child = pieceGroup.children.pop();
       pieceGroup.remove(child);
     }
+    const hiddenIndices = new Set();
+    if (mergedOptions.simulationAnimation) {
+      hiddenIndices.add(mergedOptions.simulationAnimation.fromIdx);
+      if (mergedOptions.simulationAnimation.capturedPiece) {
+        hiddenIndices.add(mergedOptions.simulationAnimation.toIdx);
+      }
+    }
     board.forEach((piece, idx) => {
+      if (hiddenIndices.has(idx)) return;
       if (!piece) return;
       const modelPath = PIECE_MODEL_PATHS[piece[0]]?.[piece[1]];
       if (!modelPath) return;
@@ -432,35 +441,48 @@ function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
   });
 }
 
-function updateSimulationPiece({ group, animation, token }) {
+function updateSimulationPiece({ group, animation }) {
   if (!group) return;
   group.visible = Boolean(animation);
   if (!animation) {
     if (simulationMesh) simulationMesh.visible = false;
+    simulationMeshLoading = null;
     return;
   }
   const pieceKey = animation.piece;
   if (!simulationMesh || simulationPieceKey !== pieceKey) {
-    simulationPieceKey = pieceKey;
+    if (simulationMesh) {
+      group.remove(simulationMesh);
+      simulationMesh.geometry?.dispose?.();
+    }
     simulationMesh = null;
+    simulationPieceKey = pieceKey;
     const modelPath = PIECE_MODEL_PATHS[pieceKey[0]]?.[pieceKey[1]];
     if (!modelPath) return;
-    loadModel(modelPath)
-      .then((template) => {
-        if (token !== updateToken) return;
-        const mesh = template.clone(true);
-        mesh.traverse((child) => {
-          if (child.isMesh) {
-            child.castShadow = true;
+    if (!simulationMeshLoading) {
+      const currentKey = pieceKey;
+      simulationMeshLoading = loadModel(modelPath)
+        .then((template) => {
+          if (simulationPieceKey !== currentKey) {
+            simulationMeshLoading = null;
+            return;
           }
+          const mesh = template.clone(true);
+          mesh.traverse((child) => {
+            if (child.isMesh) {
+              child.castShadow = true;
+            }
+          });
+          scalePieceMesh(mesh);
+          group.add(mesh);
+          simulationMesh = mesh;
+          simulationMeshLoading = null;
+          positionSimulationMesh(animation);
+        })
+        .catch(() => {
+          simulationMeshLoading = null;
         });
-        scalePieceMesh(mesh);
-        group.add(mesh);
-        simulationMesh = mesh;
-        simulationPieceKey = pieceKey;
-        positionSimulationMesh(animation);
-      })
-      .catch(() => {});
+    }
     return;
   }
   positionSimulationMesh(animation);
@@ -532,6 +554,7 @@ function updateTravelStrip({ group, animation }) {
   mesh.scale.set(length, TRAVEL_HEIGHT, width);
   if (mesh.material.map) {
     mesh.material.map.repeat.set(Math.max(1, length * 3), Math.max(1, width * 3));
+    mesh.material.map.needsUpdate = true;
   }
 }
 
