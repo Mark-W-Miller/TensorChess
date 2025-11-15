@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { OrbitControls } from 'three/examples/jsm/controls/OrbitControls.js';
 import { OBJLoader } from 'three/examples/jsm/loaders/OBJLoader.js';
 import { MTLLoader } from 'three/examples/jsm/loaders/MTLLoader.js';
+import { getPieceAttacks, getMoveRays } from '../model/chess.js';
 
 const SQUARE_SIZE = 1;
 const BOARD_OFFSET = (8 * SQUARE_SIZE) / 2;
@@ -13,6 +14,29 @@ const HEAT_MIN_HEIGHT = 0.12;
 const HEAT_HEIGHT_SCALE = 3.8;
 const HEAT_EDGE_BLEND = 0.6;
 const HEAT_BASE_SCALE = 1.4;
+const MOVE_RING_COLOR = 0xfbbf24;
+const SUPPORT_ARROW_COLOR = 0x7dd3fc;
+const THREAT_ARROW_COLOR = 0xf87171;
+const KNIGHT_OFFSETS = [
+  { df: 1, dr: 2 },
+  { df: 2, dr: 1 },
+  { df: -1, dr: 2 },
+  { df: -2, dr: 1 },
+  { df: 1, dr: -2 },
+  { df: 2, dr: -1 },
+  { df: -1, dr: -2 },
+  { df: -2, dr: -1 },
+];
+const KING_STEPS = [
+  { df: 1, dr: 0 },
+  { df: -1, dr: 0 },
+  { df: 0, dr: 1 },
+  { df: 0, dr: -1 },
+  { df: 1, dr: 1 },
+  { df: -1, dr: 1 },
+  { df: 1, dr: -1 },
+  { df: -1, dr: -1 },
+];
 
 const BOARD_MODEL_PATH = '/OBJ/GEO_ChessBoard.obj';
 
@@ -94,6 +118,15 @@ export function initBoard3D(container) {
   const heatGroup = new THREE.Group();
   heatGroup.renderOrder = 20;
   scene.add(heatGroup);
+  const moveRingGroup = new THREE.Group();
+  moveRingGroup.renderOrder = 24;
+  scene.add(moveRingGroup);
+  const attackVectorGroup = new THREE.Group();
+  attackVectorGroup.renderOrder = 26;
+  scene.add(attackVectorGroup);
+  const ringGroup = new THREE.Group();
+  ringGroup.renderOrder = 30;
+  scene.add(ringGroup);
   let updateToken = 0;
   let lastBoardState = null;
   let lastBoardOptions = null;
@@ -111,8 +144,17 @@ export function initBoard3D(container) {
 
   function updateBoard(board, options = {}) {
     if (!board) return;
+    const mergedOptions = {
+      showHeat: options.showHeat ?? true,
+      heatValues: options.heatValues,
+      heatHeightScale: options.heatHeightScale,
+      showMoveRings: options.showMoveRings ?? false,
+      showAttackVectors: options.showAttackVectors ?? false,
+      vectorHeightScale: options.vectorHeightScale,
+      vectorState: options.vectorState ?? boardStateToGame(board),
+    };
     lastBoardState = board;
-    lastBoardOptions = options;
+    lastBoardOptions = mergedOptions;
     const token = ++updateToken;
     while (pieceGroup.children.length) {
       const child = pieceGroup.children.pop();
@@ -142,9 +184,21 @@ export function initBoard3D(container) {
     });
     updateHeatVolumes({
       group: heatGroup,
-      heatValues: options.heatValues,
-      showHeat: options.showHeat,
-      heightScale: options.heatHeightScale,
+      heatValues: mergedOptions.heatValues,
+      showHeat: mergedOptions.showHeat,
+      heightScale: mergedOptions.heatHeightScale,
+    });
+    updateMoveRings({
+      group: moveRingGroup,
+      state: mergedOptions.vectorState,
+      showMoveRings: mergedOptions.showMoveRings,
+      heightScale: mergedOptions.vectorHeightScale,
+    });
+    updateAttackVectors({
+      group: attackVectorGroup,
+      state: mergedOptions.vectorState,
+      showAttackVectors: mergedOptions.showAttackVectors,
+      heightScale: mergedOptions.vectorHeightScale,
     });
   }
 
@@ -280,6 +334,171 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   }
 }
 
+function updateMoveRings({ group, state, showMoveRings, heightScale }) {
+  if (!group || !state) return;
+  group.visible = Boolean(showMoveRings);
+  clearArrowGroup(group);
+  if (!showMoveRings) return;
+  const workingState = state.board ? state : boardStateToGame(state);
+  const board = workingState.board;
+  const height = boardMetrics.surfaceY + clampVectorHeightScale(heightScale ?? 0.5) * boardMetrics.squareSizeX * 0.35;
+  const baseLength = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * 0.35;
+  board.forEach((piece, idx) => {
+    if (!piece) return;
+    const start = squarePosition3D(idx);
+    start.y = height;
+    const directions = computeMoveDirections(board, piece, idx);
+    directions.forEach(({ dir, weight }) => {
+      const len = baseLength * weight;
+      const arrow = new THREE.ArrowHelper(dir, start.clone(), len, MOVE_RING_COLOR, len * 0.3, len * 0.2);
+      if (arrow.line.material) {
+        arrow.line.material.transparent = true;
+        arrow.line.material.opacity = 0.75;
+      }
+      if (arrow.cone.material) {
+        arrow.cone.material.transparent = true;
+        arrow.cone.material.opacity = 0.9;
+      }
+      group.add(arrow);
+    });
+  });
+}
+
+function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
+  if (!group || !state) return;
+  group.visible = Boolean(showAttackVectors);
+  clearArrowGroup(group);
+  if (!showAttackVectors) return;
+  const workingState = state.board ? state : boardStateToGame(state);
+  const board = workingState.board;
+  const baseHeight = boardMetrics.surfaceY + clampVectorHeightScale(heightScale ?? 0.5) * boardMetrics.squareSizeX;
+  board.forEach((piece, idx) => {
+    if (!piece) return;
+    const start = squarePosition3D(idx);
+    start.y = baseHeight;
+    const targets = getPieceAttacks(board, idx);
+    targets.forEach((targetIdx) => {
+      const occupant = board[targetIdx];
+      if (!occupant) return;
+      const sameColor = occupant[0] === piece[0];
+      if (sameColor && occupant[1] === 'K') return;
+      const color = sameColor ? SUPPORT_ARROW_COLOR : THREAT_ARROW_COLOR;
+      const end = squarePosition3D(targetIdx);
+      end.y = baseHeight;
+      const direction = end.clone().sub(start);
+      const length = direction.length();
+      if (length < 0.1) return;
+      direction.normalize();
+      const arrow = new THREE.ArrowHelper(direction, start.clone(), length, color, Math.max(0.2, length * 0.25), Math.max(0.08, length * 0.12));
+      if (arrow.line.material) {
+        arrow.line.material.transparent = true;
+        arrow.line.material.opacity = 0.55;
+      }
+      if (arrow.cone.material) {
+        arrow.cone.material.transparent = true;
+        arrow.cone.material.opacity = 0.9;
+      }
+      group.add(arrow);
+    });
+  });
+}
+
+function clearArrowGroup(group) {
+  while (group.children.length) {
+    const child = group.children.pop();
+    group.remove(child);
+    if (child.line?.geometry) child.line.geometry.dispose();
+    if (child.line?.material) child.line.material.dispose();
+    if (child.cone?.geometry) child.cone.geometry.dispose();
+    if (child.cone?.material) child.cone.material.dispose();
+  }
+}
+
+function computeMoveDirections(board, piece, idx) {
+  const directions = [];
+  const type = piece[1];
+  const color = piece[0];
+  if (type === 'N') {
+    KNIGHT_OFFSETS.forEach(({ df, dr }) => {
+      if (targetIndex(idx, df, dr) === -1) return;
+      const dir = directionFromOffset(df, dr, 1);
+      if (dir) directions.push(dir);
+    });
+    return directions;
+  }
+  if (type === 'P') {
+    const dir = color === 'w' ? -1 : 1;
+    if (targetIndex(idx, 0, dir) !== -1) {
+      const vec = directionFromOffset(0, dir, 0.8);
+      if (vec) directions.push(vec);
+    }
+    [-1, 1].forEach((df) => {
+      if (targetIndex(idx, df, dir) !== -1) {
+        const vec = directionFromOffset(df, dir, 0.7);
+        if (vec) directions.push(vec);
+      }
+    });
+    return directions;
+  }
+  if (type === 'K') {
+    KING_STEPS.forEach(({ df, dr }) => {
+      if (targetIndex(idx, df, dr) === -1) return;
+      const vec = directionFromOffset(df, dr, 0.8);
+      if (vec) directions.push(vec);
+    });
+    return directions;
+  }
+  const rays = getMoveRays(board, idx, piece);
+  rays.forEach(({ df, dr, length }) => {
+    if (!length) return;
+    const vec = directionFromOffset(df, dr, Math.min(1, length / 3));
+    if (vec) directions.push(vec);
+  });
+  return directions;
+}
+
+function directionFromOffset(df, dr, weight = 1) {
+  const dir = new THREE.Vector3(df * boardMetrics.squareSizeX, 0, dr * boardMetrics.squareSizeZ);
+  const len = dir.length();
+  if (!len) {
+    return null;
+  }
+  dir.normalize();
+  return { dir, weight };
+}
+
+function squarePosition3D(idx) {
+  const file = idx % 8;
+  const rank = Math.floor(idx / 8);
+  const x = boardMetrics.startX + file * boardMetrics.squareSizeX;
+  const z = boardMetrics.startZ + rank * boardMetrics.squareSizeZ;
+  return new THREE.Vector3(x, boardMetrics.surfaceY, z);
+}
+
+function boardStateToGame(boardState) {
+  if (boardState && boardState.board) {
+    return {
+      board: boardState.board.slice(),
+      turn: boardState.turn ?? 'w',
+    };
+  }
+  return {
+    board: Array.isArray(boardState) ? boardState.slice() : [],
+    turn: 'w',
+  };
+}
+
+function targetIndex(fromIdx, df, dr) {
+  const file = fromIdx % 8;
+  const rank = Math.floor(fromIdx / 8);
+  const nextFile = file + df;
+  const nextRank = rank + dr;
+  if (nextFile < 0 || nextFile > 7 || nextRank < 0 || nextRank > 7) {
+    return -1;
+  }
+  return nextRank * 8 + nextFile;
+}
+
 function ensureHeatMesh(idx, group) {
   if (heatMeshes[idx]) {
     return heatMeshes[idx];
@@ -355,6 +574,13 @@ function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
   if (value < 0.05) return 0.05;
   if (value > 2) return 2;
+  return value;
+}
+
+function clampVectorHeightScale(value) {
+  if (!Number.isFinite(value)) return 0.5;
+  if (value < 0.1) return 0.1;
+  if (value > 1.5) return 1.5;
   return value;
 }
 

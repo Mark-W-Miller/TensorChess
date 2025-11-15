@@ -32,16 +32,22 @@ const fitnessEl = document.getElementById('fitness-value');
 const analysisLogEl = document.getElementById('analysis-log');
 const board3dContainer = document.getElementById('board3d-container');
 const materialSelectEl = document.getElementById('material-select');
-const layerButton = document.getElementById('layer-button');
-const layerMenu = document.getElementById('layer-menu');
-const layerHeatToggle = document.getElementById('layer-heat');
-const layerVectorToggle = document.getElementById('layer-vector');
-const layerAttackToggle = document.getElementById('layer-attack');
-const layerSupportToggle = document.getElementById('layer-support');
+const layerButton2d = document.getElementById('layer-button-2d');
+const layerMenu2d = document.getElementById('layer-menu-2d');
+const layer2dHeatToggle = document.getElementById('layer-2d-heat');
+const layer2dVectorToggle = document.getElementById('layer-2d-vector');
+const layer2dAttackToggle = document.getElementById('layer-2d-attack');
+const layerButton3d = document.getElementById('layer-button-3d');
+const layerMenu3d = document.getElementById('layer-menu-3d');
+const layer3dHeatToggle = document.getElementById('layer-3d-heat');
+const layer3dVectorToggle = document.getElementById('layer-3d-vector');
+const layer3dAttackToggle = document.getElementById('layer-3d-attack');
 const boardHudEl = document.getElementById('board3d-hud');
 const boardHudToggle = document.getElementById('board3d-hud-toggle');
 const heatHeightSlider = document.getElementById('heat-height-slider');
 const heatHeightValueEl = document.getElementById('heat-height-value');
+const vectorHeightSlider = document.getElementById('vector-height-slider');
+const vectorHeightValueEl = document.getElementById('vector-height-value');
 const sidebarColumnEl = document.getElementById('sidebar-column');
 const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
@@ -158,11 +164,14 @@ let currentScenario =
 let game = createInitialState(currentScenario.fen);
 const ui = {
   flipped: persistedSettings.flipped ?? false,
-  showHeat: persistedSettings.showHeat ?? true,
-  showVectors: persistedSettings.showVectors ?? false,
-  heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 1),
-  showAttackLayer: true,
-  showSupportLayer: true,
+  showHeat2d: persistedSettings.showHeat2d ?? true,
+  showVectors2d: persistedSettings.showVectors2d ?? true,
+  showAttack2d: persistedSettings.showAttack2d ?? false,
+  showHeat3d: persistedSettings.showHeat3d ?? true,
+  showMoveRings3d: persistedSettings.showMoveRings3d ?? true,
+  showAttack3d: persistedSettings.showAttack3d ?? false,
+  heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
+  vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
   sidebarOpen: persistedSettings.sidebarOpen ?? true,
@@ -219,17 +228,15 @@ render();
 function attachControls() {
   const resetBtn = document.getElementById('reset-btn');
   const flipBtn = document.getElementById('flip-btn');
-  const heatToggle = document.getElementById('heat-toggle');
-  const vectorToggle = document.getElementById('vector-toggle');
   const syncLayerControls = () => {
-    if (layerHeatToggle) layerHeatToggle.checked = ui.showHeat;
-    if (layerVectorToggle) layerVectorToggle.checked = ui.showVectors;
-    if (layerAttackToggle) layerAttackToggle.checked = ui.showAttackLayer;
-    if (layerSupportToggle) layerSupportToggle.checked = ui.showSupportLayer;
+    if (layer2dHeatToggle) layer2dHeatToggle.checked = ui.showHeat2d;
+    if (layer2dVectorToggle) layer2dVectorToggle.checked = ui.showVectors2d;
+    if (layer2dAttackToggle) layer2dAttackToggle.checked = ui.showAttack2d;
+    if (layer3dHeatToggle) layer3dHeatToggle.checked = ui.showHeat3d;
+    if (layer3dVectorToggle) layer3dVectorToggle.checked = ui.showMoveRings3d;
+    if (layer3dAttackToggle) layer3dAttackToggle.checked = ui.showAttack3d;
   };
-
-  heatToggle.checked = ui.showHeat;
-  vectorToggle.checked = ui.showVectors;
+  
   syncLayerControls();
   const updateHeatHeightControls = () => {
     if (heatHeightSlider) {
@@ -239,7 +246,52 @@ function attachControls() {
       heatHeightValueEl.textContent = `${Math.round(ui.heatHeightScale * 100)}%`;
     }
   };
+  const updateVectorHeightControls = () => {
+    if (vectorHeightSlider) {
+      vectorHeightSlider.value = ui.vectorHeightScale.toFixed(2);
+    }
+    if (vectorHeightValueEl) {
+      vectorHeightValueEl.textContent = `${Math.round(ui.vectorHeightScale * 100)}%`;
+    }
+  };
   updateHeatHeightControls();
+  updateVectorHeightControls();
+  const refresh3DView = () => {
+    if (board3d && ui.show3dBoard) {
+      board3d.updateBoard(game.board, {
+        heatValues,
+        showHeat: ui.showHeat3d,
+        heatHeightScale: ui.heatHeightScale,
+        vectorHeightScale: ui.vectorHeightScale,
+        showMoveRings: ui.showMoveRings3d,
+        showAttackVectors: ui.showAttack3d,
+        vectorState: drag.active ? drag.previewState ?? game : game,
+      });
+    }
+  };
+  const register2dLayerToggle = (el, key) => {
+    if (!el) return;
+    el.addEventListener('change', (event) => {
+      ui[key] = event.target.checked;
+      persistSettings();
+      render();
+    });
+  };
+  register2dLayerToggle(layer2dHeatToggle, 'showHeat2d');
+  register2dLayerToggle(layer2dVectorToggle, 'showVectors2d');
+  register2dLayerToggle(layer2dAttackToggle, 'showAttack2d');
+
+  const register3dLayerToggle = (el, key) => {
+    if (!el) return;
+    el.addEventListener('change', (event) => {
+      ui[key] = event.target.checked;
+      persistSettings();
+      refresh3DView();
+    });
+  };
+  register3dLayerToggle(layer3dHeatToggle, 'showHeat3d');
+  register3dLayerToggle(layer3dVectorToggle, 'showMoveRings3d');
+  register3dLayerToggle(layer3dAttackToggle, 'showAttack3d');
   updateBoardSplitDisplay();
 
   resetBtn.addEventListener('click', () => {
@@ -260,20 +312,6 @@ function attachControls() {
       }
     });
   }
-
-  heatToggle.addEventListener('change', (e) => {
-    ui.showHeat = e.target.checked;
-    syncLayerControls();
-    persistSettings();
-    render();
-  });
-
-  vectorToggle.addEventListener('change', (e) => {
-    ui.showVectors = e.target.checked;
-    syncLayerControls();
-    persistSettings();
-    render();
-  });
 
   if (board2dToggle) {
     board2dToggle.checked = ui.show2dBoard;
@@ -309,54 +347,21 @@ function attachControls() {
     });
   }
 
-  if (layerHeatToggle) {
-    layerHeatToggle.addEventListener('change', (e) => {
-      ui.showHeat = e.target.checked;
-      if (heatToggle.checked !== ui.showHeat) {
-        heatToggle.checked = ui.showHeat;
-      }
-      persistSettings();
-      render();
-    });
-  }
-
-  if (layerVectorToggle) {
-    layerVectorToggle.addEventListener('change', (e) => {
-      ui.showVectors = e.target.checked;
-      if (vectorToggle.checked !== ui.showVectors) {
-        vectorToggle.checked = ui.showVectors;
-      }
-      persistSettings();
-      render();
-    });
-  }
-
-  if (layerAttackToggle) {
-    layerAttackToggle.addEventListener('change', (e) => {
-      ui.showAttackLayer = e.target.checked;
-      render();
-    });
-  }
-
-  if (layerSupportToggle) {
-    layerSupportToggle.addEventListener('change', (e) => {
-      ui.showSupportLayer = e.target.checked;
-      render();
-    });
-  }
-
-  if (layerButton && layerMenu) {
-    layerButton.addEventListener('click', (event) => {
+  const attachLayerMenu = (button, menu) => {
+    if (!button || !menu) return;
+    button.addEventListener('click', (event) => {
       event.stopPropagation();
-      layerMenu.classList.toggle('hidden');
+      menu.classList.toggle('hidden');
     });
     document.addEventListener('click', (event) => {
-      if (layerMenu.classList.contains('hidden')) return;
-      if (!layerMenu.contains(event.target) && event.target !== layerButton) {
-        layerMenu.classList.add('hidden');
+      if (menu.classList.contains('hidden')) return;
+      if (!menu.contains(event.target) && event.target !== button) {
+        menu.classList.add('hidden');
       }
     });
-  }
+  };
+  attachLayerMenu(layerButton2d, layerMenu2d);
+  attachLayerMenu(layerButton3d, layerMenu3d);
 
   if (heatHeightSlider) {
     heatHeightSlider.addEventListener('input', (event) => {
@@ -365,16 +370,20 @@ function attachControls() {
       ui.heatHeightScale = nextValue;
       updateHeatHeightControls();
       persistSettings();
-      if (board3d) {
-        board3d.updateBoard(game.board, {
-          heatValues,
-          showHeat: ui.showHeat,
-          heatHeightScale: ui.heatHeightScale,
-        });
-      }
+      refresh3DView();
     });
   }
 
+  if (vectorHeightSlider) {
+    vectorHeightSlider.addEventListener('input', (event) => {
+      const nextValue = clampVectorHeightScale(parseFloat(event.target.value));
+      if (!Number.isFinite(nextValue)) return;
+      ui.vectorHeightScale = nextValue;
+      updateVectorHeightControls();
+      persistSettings();
+      refresh3DView();
+    });
+  }
   if (boardResizerEl && boardColumnEl) {
     let resizing = false;
     let activePointer = null;
@@ -733,11 +742,15 @@ function render() {
   });
 
   overlayCtx.clearRect(0, 0, overlayCanvas.width, overlayCanvas.height);
-  if (ui.showHeat) {
+  if (ui.showHeat2d) {
     drawHeatmap(overlayCtx, heatValues, { flipped: ui.flipped });
   }
-  if (ui.showVectors) {
-    drawVectors(overlayCtx, vectorState, { flipped: ui.flipped });
+  if (ui.showVectors2d || ui.showAttack2d) {
+    drawVectors(overlayCtx, vectorState, {
+      flipped: ui.flipped,
+      showMoveRings: ui.showVectors2d,
+      showAttackSupport: ui.showAttack2d,
+    });
   }
   if (drag.active) {
     const ghostPos = drag.snapPoint ?? drag.pointer;
@@ -750,7 +763,15 @@ function render() {
   drawKingFlashOverlay(overlayCtx);
 
   if (board3d && ui.show3dBoard) {
-    board3d.updateBoard(boardState, { heatValues, showHeat: ui.showHeat, heatHeightScale: ui.heatHeightScale });
+    board3d.updateBoard(boardState, {
+      heatValues,
+      showHeat: ui.showHeat3d,
+      heatHeightScale: ui.heatHeightScale,
+      vectorHeightScale: ui.vectorHeightScale,
+      showMoveRings: ui.showMoveRings3d,
+      showAttackVectors: ui.showAttack3d,
+      vectorState,
+    });
   }
 
   updateBoardStatus(vectorState);
@@ -775,13 +796,18 @@ function persistSettings() {
   }
   const payload = {
     flipped: ui.flipped,
-    showHeat: ui.showHeat,
-    showVectors: ui.showVectors,
+    showHeat2d: ui.showHeat2d,
+    showVectors2d: ui.showVectors2d,
+    showAttack2d: ui.showAttack2d,
+    showHeat3d: ui.showHeat3d,
+    showMoveRings3d: ui.showMoveRings3d,
+    showAttack3d: ui.showAttack3d,
     heatHeightScale: ui.heatHeightScale,
     show2dBoard: ui.show2dBoard,
     show3dBoard: ui.show3dBoard,
     sidebarOpen: ui.sidebarOpen,
     boardSplit: ui.boardSplit,
+    vectorHeightScale: ui.vectorHeightScale,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -793,6 +819,11 @@ function persistSettings() {
 function clampHeatHeightScale(value) {
   if (!Number.isFinite(value)) return 1;
   return Math.min(2, Math.max(0.05, value));
+}
+
+function clampVectorHeightScale(value) {
+  if (!Number.isFinite(value)) return 0.5;
+  return Math.min(1.5, Math.max(0.1, value));
 }
 
 function clampBoardSplit(value) {
@@ -817,8 +848,12 @@ function updateBoardVisibility() {
       board3d.show();
       board3d.updateBoard(game.board, {
         heatValues,
-        showHeat: ui.showHeat,
+        showHeat: ui.showHeat3d,
         heatHeightScale: ui.heatHeightScale,
+        vectorHeightScale: ui.vectorHeightScale,
+        showMoveRings: ui.showMoveRings3d,
+        showAttackVectors: ui.showAttack3d,
+        vectorState: game,
       });
     } else {
       board3d.hide();

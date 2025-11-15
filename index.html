@@ -196,7 +196,7 @@
         position: relative;
       }
 
-      #layer-button {
+      .layer-button {
         border-radius: 999px;
         border: 1px solid rgba(148, 163, 184, 0.3);
         background: rgba(15, 23, 42, 0.4);
@@ -533,8 +533,6 @@
           <button id="flip-btn">Flip Board</button>
           <button id="black-move-btn">Opponent Move</button>
           <button id="backsy-btn">Backsy</button>
-          <label><input type="checkbox" id="heat-toggle" checked /> Show Heatmap</label>
-          <label><input type="checkbox" id="vector-toggle" /> Show Vectors</label>
           <label class="material-select">
             Pieces:
             <select id="material-select">
@@ -542,17 +540,24 @@
               <option value="marble">Marble</option>
             </select>
           </label>
-          <div class="layer-toggle">
-            <button id="layer-button">Layers ▾</button>
-            <div id="layer-menu" class="layer-menu hidden">
-              <label><input type="checkbox" id="layer-heat" checked /> Heat Map</label>
-              <label><input type="checkbox" id="layer-vector" /> Move Vector Rings</label>
-              <label><input type="checkbox" id="layer-attack" /> Attack Level</label>
-              <label><input type="checkbox" id="layer-support" /> Support Level</label>
-            </div>
-          </div>
         </div>
         <div class="view-toggle">
+          <div class="layer-toggle">
+            <button id="layer-button-2d" class="layer-button">2D Layers ▾</button>
+            <div id="layer-menu-2d" class="layer-menu hidden">
+              <label><input type="checkbox" id="layer-2d-heat" checked /> Heat Map</label>
+              <label><input type="checkbox" id="layer-2d-vector" checked /> Move Rings</label>
+              <label><input type="checkbox" id="layer-2d-attack" /> Attack/Support Vectors</label>
+            </div>
+          </div>
+          <div class="layer-toggle">
+            <button id="layer-button-3d" class="layer-button">3D Layers ▾</button>
+            <div id="layer-menu-3d" class="layer-menu hidden">
+              <label><input type="checkbox" id="layer-3d-heat" checked /> Heat Map</label>
+              <label><input type="checkbox" id="layer-3d-vector" checked /> Move Vector Rings</label>
+              <label><input type="checkbox" id="layer-3d-attack" /> Attack/Support Vectors</label>
+            </div>
+          </div>
           <span>Boards:</span>
           <label><input type="checkbox" id="toggle-2d-board" checked /> Show 2D</label>
           <label><input type="checkbox" id="toggle-3d-board" checked /> Show 3D</label>
@@ -660,9 +665,16 @@
                   <div class="hud-slider">
                     <div class="hud-slider-header">
                       <span>Heat Height</span>
-                      <span id="heat-height-value">100%</span>
+                      <span id="heat-height-value">5%</span>
                     </div>
                     <input id="heat-height-slider" type="range" min="0.05" max="2" step="0.05" value="0.05" aria-label="Heat marker height" />
+                  </div>
+                  <div class="hud-slider">
+                    <div class="hud-slider-header">
+                      <span>Vector Ring Height</span>
+                      <span id="vector-height-value">50%</span>
+                    </div>
+                    <input id="vector-height-slider" type="range" min="0.1" max="1.5" step="0.05" value="0.5" aria-label="Vector ring height" />
                   </div>
                 </div>
               </div>

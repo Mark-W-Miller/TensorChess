@@ -34,33 +34,37 @@ const PIECE_VALUE = {
 const BASE_WIDTH = 3;
 const WIDTH_SCALE = 0.7;
 
-export function drawVectors(ctx, state, { flipped }) {
+export function drawVectors(ctx, state, { flipped, showMoveRings = true, showAttackSupport = true } = {}) {
   ctx.save();
   ctx.lineCap = 'round';
   state.board.forEach((piece, idx) => {
     if (!piece) return;
     const start = squareCenter(idx, flipped);
-    const targets = getPieceAttacks(state.board, idx);
-    targets.forEach((targetIdx) => {
-      const occupant = state.board[targetIdx];
-      if (!occupant) return;
-      const sameColor = occupant[0] === piece[0];
-      if (sameColor && occupant[1] === 'K') {
-        return;
-      }
-      const color = sameColor ? SUPPORT_COLOR : THREAT_COLOR;
-      const end = squareCenter(targetIdx, flipped);
-      let targetValue = PIECE_VALUE[occupant[1]];
-      if (sameColor && occupant[1] === 'P') {
-        targetValue = PIECE_VALUE.P * Math.pow(2, pawnProgress(occupant, targetIdx));
-      }
-      if (!sameColor && occupant[1] === 'K') {
-        targetValue = Math.min(targetValue, PIECE_VALUE.Q * 2);
-      }
-      const width = BASE_WIDTH + targetValue * WIDTH_SCALE;
-      drawArrow(ctx, start, end, color, width);
-    });
-    drawFreedomRays(ctx, state.board, piece, idx, flipped);
+    if (showAttackSupport) {
+      const targets = getPieceAttacks(state.board, idx);
+      targets.forEach((targetIdx) => {
+        const occupant = state.board[targetIdx];
+        if (!occupant) return;
+        const sameColor = occupant[0] === piece[0];
+        if (sameColor && occupant[1] === 'K') {
+          return;
+        }
+        const color = sameColor ? SUPPORT_COLOR : THREAT_COLOR;
+        const end = squareCenter(targetIdx, flipped);
+        let targetValue = PIECE_VALUE[occupant[1]];
+        if (sameColor && occupant[1] === 'P') {
+          targetValue = PIECE_VALUE.P * Math.pow(2, pawnProgress(occupant, targetIdx));
+        }
+        if (!sameColor && occupant[1] === 'K') {
+          targetValue = Math.min(targetValue, PIECE_VALUE.Q * 2);
+        }
+        const width = BASE_WIDTH + targetValue * WIDTH_SCALE;
+        drawArrow(ctx, start, end, color, width);
+      });
+    }
+    if (showMoveRings) {
+      drawFreedomRays(ctx, state.board, piece, idx, flipped);
+    }
   });
   ctx.restore();
 }
