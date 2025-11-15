@@ -77,6 +77,7 @@ const pendingLoads = new Map();
 const heatGeometry = new THREE.CylinderGeometry(0.2, 0.5, 1, 4, 1, false);
 heatGeometry.computeVertexNormals();
 const heatMeshes = new Array(64).fill(null);
+const heatHeights = new Array(64).fill(0);
 const EMPTY_HEAT_CELL = { threat: 0, support: 0 };
 const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   color: 0xffffff,
@@ -88,6 +89,7 @@ const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   side: THREE.DoubleSide,
   depthWrite: false,
 });
+const HEAT_LERP = 0.2;
 const travelMaterial = createTravelMaterial();
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
@@ -346,16 +348,9 @@ function centerMesh(mesh) {
 function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   if (!group) return;
   const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
+  let anyVisible = false;
   const active = Boolean(showHeat && hasValues);
-  group.visible = active;
-  for (let i = 0; i < heatMeshes.length; i++) {
-    if (heatMeshes[i]) {
-      heatMeshes[i].visible = false;
-    }
-  }
-  if (!active) {
-    return;
-  }
+  const maxExtents = hasValues ? getHeatExtents(heatValues) : { maxThreat: 0, maxSupport: 0 };
   const unit = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ);
   const heightMultiplier = clampHeatHeightScale(heightScale ?? 1);
   const baseOffset = unit * HEAT_BASE_OFFSET;
@@ -363,32 +358,49 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   const scaledHeight = unit * HEAT_HEIGHT_SCALE * heightMultiplier;
   const scaleX = boardMetrics.squareSizeX * HEAT_BASE_SCALE;
   const scaleZ = boardMetrics.squareSizeZ * HEAT_BASE_SCALE;
-  const { maxThreat, maxSupport } = getHeatExtents(heatValues);
+  const { maxThreat, maxSupport } = maxExtents;
   for (let idx = 0; idx < 64; idx++) {
-    const cell = heatValues[idx] ?? EMPTY_HEAT_CELL;
+    const cell = hasValues ? heatValues[idx] ?? EMPTY_HEAT_CELL : EMPTY_HEAT_CELL;
     const threatIntensity = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
     const supportIntensity = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
-    const value = Math.max(threatIntensity, supportIntensity);
-    if (value <= HEAT_MIN_VALUE) continue;
+    const value = active ? Math.max(threatIntensity, supportIntensity) : 0;
+    let targetHeight = 0;
+    let edgeValue = value;
+    if (value > HEAT_MIN_VALUE && active) {
+      const neighborAvg = computeNeighborAverage(idx, heatValues, maxThreat, maxSupport);
+      edgeValue = Number.isFinite(neighborAvg)
+        ? clampUnit(HEAT_EDGE_BLEND * neighborAvg + (1 - HEAT_EDGE_BLEND) * value)
+        : value;
+      const centerHeight = minHeight + value * scaledHeight;
+      const shoulderHeight = (minHeight * 0.6) + edgeValue * scaledHeight * 0.85;
+      const topHeight = Math.max(centerHeight, shoulderHeight + unit * 0.05);
+      const bottomHeight = Math.max(0, Math.min(centerHeight, shoulderHeight * 0.85));
+      targetHeight = Math.max(minHeight * 0.7, topHeight - bottomHeight);
+    }
+
+    const existing = heatMeshes[idx];
+    if (!existing && targetHeight <= 0) {
+      heatHeights[idx] = 0;
+      continue;
+    }
     const mesh = ensureHeatMesh(idx, group);
-    if (!mesh) continue;
-    const neighborAvg = computeNeighborAverage(idx, heatValues, maxThreat, maxSupport);
-    const edgeValue = Number.isFinite(neighborAvg)
-      ? clampUnit(HEAT_EDGE_BLEND * neighborAvg + (1 - HEAT_EDGE_BLEND) * value)
-      : value;
-    const centerHeight = minHeight + value * scaledHeight;
-    const shoulderHeight = (minHeight * 0.6) + edgeValue * scaledHeight * 0.85;
-    const topHeight = Math.max(centerHeight, shoulderHeight + unit * 0.05);
-    const bottomHeight = Math.max(0, Math.min(centerHeight, shoulderHeight * 0.85));
-    const height = Math.max(minHeight * 0.7, topHeight - bottomHeight);
+    const current = heatHeights[idx] ?? 0;
+    const nextHeight = current + (targetHeight - current) * HEAT_LERP;
+    heatHeights[idx] = nextHeight;
+    if (nextHeight <= 0.0001) {
+      mesh.visible = false;
+      continue;
+    }
     const { file, rank } = idxToCoord(idx);
     const x = boardMetrics.startX + file * boardMetrics.squareSizeX;
     const z = boardMetrics.startZ + rank * boardMetrics.squareSizeZ;
     mesh.visible = true;
-    mesh.scale.set(scaleX, height, scaleZ);
-    mesh.position.set(x, boardMetrics.surfaceY + baseOffset + height / 2, z);
+    mesh.scale.set(scaleX, nextHeight, scaleZ);
+    mesh.position.set(x, boardMetrics.surfaceY + baseOffset + nextHeight / 2, z);
     applyHeatColor(mesh.material, threatIntensity, supportIntensity);
+    anyVisible = true;
   }
+  group.visible = showHeat || anyVisible;
 }
 
 function updateMoveRings({ group, state, showMoveRings, heightScale, lengthScale }) {
