@@ -19,6 +19,14 @@ const SUPPORT_ARROW_COLOR = 0x7dd3fc;
 const THREAT_ARROW_COLOR = 0xf87171;
 const TRAVEL_COLOR = 0xfacc15;
 const TRAVEL_HEIGHT = 0.04;
+const PIECE_VALUE = {
+  P: 1,
+  N: 3,
+  B: 3,
+  R: 5,
+  Q: 9,
+  K: 12,
+};
 const KNIGHT_OFFSETS = [
   { df: 1, dr: 2 },
   { df: 2, dr: 1 },
@@ -400,22 +408,47 @@ function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
       const color = sameColor ? SUPPORT_ARROW_COLOR : THREAT_ARROW_COLOR;
       const end = squarePosition3D(targetIdx);
       end.y = baseHeight;
-      const direction = end.clone().sub(start);
-      const length = direction.length();
+      const length = end.clone().sub(start).length();
       if (length < 0.1) return;
-      direction.normalize();
-      const arrow = new THREE.ArrowHelper(direction, start.clone(), length, color, Math.max(0.2, length * 0.25), Math.max(0.08, length * 0.12));
-      if (arrow.line.material) {
-        arrow.line.material.transparent = true;
-        arrow.line.material.opacity = 0.55;
+      const targetValue = PIECE_VALUE[occupant[1]] || 1;
+      const thickness = 0.05 + Math.min(0.4, targetValue / 12);
+      const opacity = 0.45 + Math.min(0.4, targetValue / 15);
+      const arrow = createArrowMesh(start, end, thickness, color, opacity);
+      if (arrow) {
+        group.add(arrow);
       }
-      if (arrow.cone.material) {
-        arrow.cone.material.transparent = true;
-        arrow.cone.material.opacity = 0.9;
-      }
-      group.add(arrow);
     });
   });
+}
+
+function createArrowMesh(start, end, thickness, color, opacity = 0.75) {
+  const direction = end.clone().sub(start);
+  const length = direction.length();
+  if (length <= 0.01) return null;
+  direction.normalize();
+  const scaledThickness = thickness * 0.1;
+  const headLength = Math.min(length * 0.3, 0.4);
+  const bodyLength = Math.max(length - headLength, 0.02);
+  const radius = Math.max(0.01, scaledThickness * 0.5);
+  const material = new THREE.MeshBasicMaterial({
+    color,
+    transparent: true,
+    opacity,
+    depthWrite: false,
+  });
+  const bodyGeometry = new THREE.CylinderGeometry(radius, radius, bodyLength, 10, 1, true);
+  const headGeometry = new THREE.ConeGeometry(Math.max(0.015, radius * 1.2), headLength, 10, 1);
+  const body = new THREE.Mesh(bodyGeometry, material);
+  const head = new THREE.Mesh(headGeometry, material.clone());
+  body.position.y = bodyLength / 2;
+  head.position.y = bodyLength + headLength / 2;
+  const arrowGroup = new THREE.Group();
+  arrowGroup.add(body);
+  arrowGroup.add(head);
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(0, 1, 0), direction);
+  arrowGroup.quaternion.copy(quaternion);
+  arrowGroup.position.copy(start);
+  return arrowGroup;
 }
 
 function updateTravelStrip({ group, lastMove }) {
