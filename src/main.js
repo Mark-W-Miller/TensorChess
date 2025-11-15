@@ -4,6 +4,7 @@ import {
   makeMove,
   START_FEN,
   isCheckmate,
+  isStalemate,
   evaluateBoard,
   simulateMove,
   getKingSquare,
@@ -957,7 +958,7 @@ function clampVectorScale(value) {
 
 function clampSimulationSpeed(value) {
   if (!Number.isFinite(value)) return 30;
-  return Math.min(60, Math.max(1, value));
+  return Math.min(600, Math.max(1, value));
 }
 
 function clampBoardSplit(value) {
@@ -1140,6 +1141,11 @@ function loadScenario(scenario) {
 function detectCheckmate(state) {
   if (!state) return null;
   return isCheckmate(state) ? state.turn : null;
+}
+
+function detectStalemate(state) {
+  if (!state) return false;
+  return isStalemate(state);
 }
 
 function loadSavedScenario() {
@@ -1533,16 +1539,31 @@ function collectAutoMoves(state, color) {
       });
     });
   });
+  if (!moves.length) return [];
+
+  // Sort by desirability: mates first, then eval score, then cheaper piece for expendability
   moves.sort((a, b) => {
-    if (a.mates !== b.mates) {
-      return a.mates ? -1 : 1; // mates first
-    }
-    if (a.evalScore !== b.evalScore) {
-      return b.evalScore - a.evalScore; // higher score -> safer for current color
-    }
+    if (a.mates !== b.mates) return a.mates ? -1 : 1;
+    if (a.evalScore !== b.evalScore) return b.evalScore - a.evalScore;
     return a.pieceValue - b.pieceValue;
   });
-  return moves.map((entry) => entry.move);
+
+  // Weighted random: best moves get highest weight; still allows exploration
+  const weights = moves.map((m, index) => Math.max(1e-3, moves.length - index));
+  const total = weights.reduce((sum, w) => sum + w, 0);
+  const r = Math.random() * total;
+  let accum = 0;
+  let chosen = moves[0];
+  for (let i = 0; i < moves.length; i++) {
+    accum += weights[i];
+    if (r <= accum) {
+      chosen = moves[i];
+      break;
+    }
+  }
+  // Return ordered list with the selected move first, followed by the remaining best-first
+  const remaining = moves.filter((m) => m !== chosen);
+  return [chosen.move, ...remaining.map((m) => m.move)];
 }
 
 function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHover = true } = {}) {
@@ -1668,14 +1689,21 @@ function applySimulationMove(move) {
   heatValues = computeHeat(game, { color: playerColor });
   renderCapturedPieces();
   prepareAutoResponseOptions();
+  const matedColor = detectCheckmate(game);
+  const stalemated = detectStalemate(game);
+  if (matedColor || stalemated) {
+    stopSimulation();
+  }
   render();
 }
 
 function computeSimulationDuration(distance) {
-  const steps = clampSimulationSpeed(ui.simulationSpeed);
+  const speed = clampSimulationSpeed(ui.simulationSpeed);
   const perSquare = 90;
   const base = 300;
-  return Math.max(200, base + (distance / SQUARE_SIZE) * perSquare * (steps / 30));
+  const raw = base + (distance / SQUARE_SIZE) * perSquare;
+  const scaled = raw * (30 / speed); // higher speed value => faster animation
+  return Math.max(80, scaled);
 }
 
 function triggerKingFlashIfNeeded(lastMove) {

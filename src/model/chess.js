@@ -191,6 +191,17 @@ export function isCheckmate(state) {
   return !hasEscape;
 }
 
+export function isStalemate(state) {
+  if (isKingInCheck(state.board, state.turn)) {
+    return false;
+  }
+  const hasMove = state.board.some((piece, idx) => {
+    if (!piece || piece[0] !== state.turn) return false;
+    return getLegalMoves(state, idx).length > 0;
+  });
+  return !hasMove;
+}
+
 export function getMoveRays(board, idx, piece = board[idx]) {
   if (!piece) return [];
   const type = piece[1];
