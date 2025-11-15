@@ -151,6 +151,7 @@ export function initBoard3D(container) {
       showMoveRings: options.showMoveRings ?? false,
       showAttackVectors: options.showAttackVectors ?? false,
       vectorHeightScale: options.vectorHeightScale,
+      moveRingHeightScale: options.moveRingHeightScale,
       vectorState: options.vectorState ?? boardStateToGame(board),
     };
     lastBoardState = board;
@@ -192,7 +193,8 @@ export function initBoard3D(container) {
       group: moveRingGroup,
       state: mergedOptions.vectorState,
       showMoveRings: mergedOptions.showMoveRings,
-      heightScale: mergedOptions.vectorHeightScale,
+      heightScale: mergedOptions.moveRingHeightScale,
+      lengthScale: mergedOptions.vectorHeightScale,
     });
     updateAttackVectors({
       group: attackVectorGroup,
@@ -334,15 +336,17 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   }
 }
 
-function updateMoveRings({ group, state, showMoveRings, heightScale }) {
+function updateMoveRings({ group, state, showMoveRings, heightScale, lengthScale }) {
   if (!group || !state) return;
   group.visible = Boolean(showMoveRings);
   clearArrowGroup(group);
   if (!showMoveRings) return;
   const workingState = state.board ? state : boardStateToGame(state);
   const board = workingState.board;
-  const height = boardMetrics.surfaceY + clampVectorHeightScale(heightScale ?? 0.5) * boardMetrics.squareSizeX * 0.35;
-  const baseLength = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * 0.35;
+  const elevation = clampMoveRingHeightScale(heightScale ?? 0.2);
+  const height = boardMetrics.surfaceY + elevation * boardMetrics.squareSizeX;
+  const lengthScaleValue = clampVectorHeightScale(lengthScale ?? 0.5);
+  const baseLength = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * (0.2 + lengthScaleValue * 0.5);
   board.forEach((piece, idx) => {
     if (!piece) return;
     const start = squarePosition3D(idx);
@@ -581,6 +585,13 @@ function clampVectorHeightScale(value) {
   if (!Number.isFinite(value)) return 0.5;
   if (value < 0.1) return 0.1;
   if (value > 1.5) return 1.5;
+  return value;
+}
+
+function clampMoveRingHeightScale(value) {
+  if (!Number.isFinite(value)) return 0.2;
+  if (value < 0.05) return 0.05;
+  if (value > 1) return 1;
   return value;
 }
 

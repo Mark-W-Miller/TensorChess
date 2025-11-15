@@ -48,6 +48,8 @@ const heatHeightSlider = document.getElementById('heat-height-slider');
 const heatHeightValueEl = document.getElementById('heat-height-value');
 const vectorHeightSlider = document.getElementById('vector-height-slider');
 const vectorHeightValueEl = document.getElementById('vector-height-value');
+const vectorOffsetSlider = document.getElementById('vector-offset-slider');
+const vectorOffsetValueEl = document.getElementById('vector-offset-value');
 const sidebarColumnEl = document.getElementById('sidebar-column');
 const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
@@ -172,6 +174,7 @@ const ui = {
   showAttack3d: persistedSettings.showAttack3d ?? false,
   heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
+  moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
   sidebarOpen: persistedSettings.sidebarOpen ?? true,
@@ -254,8 +257,17 @@ function attachControls() {
       vectorHeightValueEl.textContent = `${Math.round(ui.vectorHeightScale * 100)}%`;
     }
   };
+  const updateVectorOffsetControls = () => {
+    if (vectorOffsetSlider) {
+      vectorOffsetSlider.value = ui.moveRingHeightScale.toFixed(2);
+    }
+    if (vectorOffsetValueEl) {
+      vectorOffsetValueEl.textContent = `${Math.round(ui.moveRingHeightScale * 100)}%`;
+    }
+  };
   updateHeatHeightControls();
   updateVectorHeightControls();
+  updateVectorOffsetControls();
   const refresh3DView = () => {
     if (board3d && ui.show3dBoard) {
       board3d.updateBoard(game.board, {
@@ -263,6 +275,7 @@ function attachControls() {
         showHeat: ui.showHeat3d,
         heatHeightScale: ui.heatHeightScale,
         vectorHeightScale: ui.vectorHeightScale,
+        moveRingHeightScale: ui.moveRingHeightScale,
         showMoveRings: ui.showMoveRings3d,
         showAttackVectors: ui.showAttack3d,
         vectorState: drag.active ? drag.previewState ?? game : game,
@@ -380,6 +393,16 @@ function attachControls() {
       if (!Number.isFinite(nextValue)) return;
       ui.vectorHeightScale = nextValue;
       updateVectorHeightControls();
+      persistSettings();
+      refresh3DView();
+    });
+  }
+  if (vectorOffsetSlider) {
+    vectorOffsetSlider.addEventListener('input', (event) => {
+      const nextValue = clampMoveRingHeightScale(parseFloat(event.target.value));
+      if (!Number.isFinite(nextValue)) return;
+      ui.moveRingHeightScale = nextValue;
+      updateVectorOffsetControls();
       persistSettings();
       refresh3DView();
     });
@@ -768,6 +791,7 @@ function render() {
       showHeat: ui.showHeat3d,
       heatHeightScale: ui.heatHeightScale,
       vectorHeightScale: ui.vectorHeightScale,
+      moveRingHeightScale: ui.moveRingHeightScale,
       showMoveRings: ui.showMoveRings3d,
       showAttackVectors: ui.showAttack3d,
       vectorState,
@@ -808,6 +832,7 @@ function persistSettings() {
     sidebarOpen: ui.sidebarOpen,
     boardSplit: ui.boardSplit,
     vectorHeightScale: ui.vectorHeightScale,
+    moveRingHeightScale: ui.moveRingHeightScale,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -824,6 +849,11 @@ function clampHeatHeightScale(value) {
 function clampVectorHeightScale(value) {
   if (!Number.isFinite(value)) return 0.5;
   return Math.min(1.5, Math.max(0.1, value));
+}
+
+function clampMoveRingHeightScale(value) {
+  if (!Number.isFinite(value)) return 0.2;
+  return Math.min(1, Math.max(0.05, value));
 }
 
 function clampBoardSplit(value) {
