@@ -17,6 +17,8 @@ const HEAT_BASE_SCALE = 1.4;
 const MOVE_RING_COLOR = 0xfbbf24;
 const SUPPORT_ARROW_COLOR = 0x7dd3fc;
 const THREAT_ARROW_COLOR = 0xf87171;
+const TRAVEL_COLOR = 0xfacc15;
+const TRAVEL_HEIGHT = 0.04;
 const KNIGHT_OFFSETS = [
   { df: 1, dr: 2 },
   { df: 2, dr: 1 },
@@ -78,6 +80,13 @@ const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   side: THREE.DoubleSide,
   depthWrite: false,
 });
+const travelMaterial = new THREE.MeshBasicMaterial({
+  color: TRAVEL_COLOR,
+  transparent: true,
+  opacity: 0.65,
+  side: THREE.DoubleSide,
+  depthWrite: false,
+});
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
 let requestRelayout = () => {};
@@ -124,6 +133,10 @@ export function initBoard3D(container) {
   const attackVectorGroup = new THREE.Group();
   attackVectorGroup.renderOrder = 26;
   scene.add(attackVectorGroup);
+  const travelGroup = new THREE.Group();
+  travelGroup.renderOrder = 28;
+  scene.add(travelGroup);
+  let travelMesh = null;
   const ringGroup = new THREE.Group();
   ringGroup.renderOrder = 30;
   scene.add(ringGroup);
@@ -201,6 +214,10 @@ export function initBoard3D(container) {
       state: mergedOptions.vectorState,
       showAttackVectors: mergedOptions.showAttackVectors,
       heightScale: mergedOptions.vectorHeightScale,
+    });
+    updateTravelStrip({
+      group: travelGroup,
+      lastMove: mergedOptions.vectorState?.lastMove ?? null,
     });
   }
 
@@ -407,6 +424,31 @@ function updateAttackVectors({ group, state, showAttackVectors, heightScale }) {
   });
 }
 
+function updateTravelStrip({ group, lastMove }) {
+  if (!group) return;
+  if (!lastMove) {
+    group.visible = false;
+    if (group.children[0]) {
+      group.children[0].visible = false;
+    }
+    return;
+  }
+  group.visible = true;
+  const mesh = ensureTravelMesh(group);
+  const from = squarePosition3D(lastMove.from);
+  const to = squarePosition3D(lastMove.to);
+  const mid = from.clone().add(to).multiplyScalar(0.5);
+  const delta = to.clone().sub(from).setY(0);
+  const length = Math.max(delta.length(), 0.001);
+  const width = Math.max(Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ) * 0.25, 0.05);
+  const dir = delta.clone().normalize();
+  const quaternion = new THREE.Quaternion().setFromUnitVectors(new THREE.Vector3(1, 0, 0), dir);
+  mesh.visible = true;
+  mesh.position.set(mid.x, boardMetrics.surfaceY + TRAVEL_HEIGHT * 0.5, mid.z);
+  mesh.quaternion.copy(quaternion);
+  mesh.scale.set(length, TRAVEL_HEIGHT, width);
+}
+
 function clearArrowGroup(group) {
   while (group.children.length) {
     const child = group.children.pop();
@@ -487,6 +529,17 @@ function squarePosition3D(idx) {
   const x = boardMetrics.startX + file * boardMetrics.squareSizeX;
   const z = boardMetrics.startZ + rank * boardMetrics.squareSizeZ;
   return new THREE.Vector3(x, boardMetrics.surfaceY, z);
+}
+
+function ensureTravelMesh(group) {
+  if (group.children[0]) {
+    return group.children[0];
+  }
+  const geometry = new THREE.BoxGeometry(1, 1, 1);
+  const mesh = new THREE.Mesh(geometry, travelMaterial);
+  mesh.visible = false;
+  group.add(mesh);
+  return mesh;
 }
 
 function boardStateToGame(boardState) {
