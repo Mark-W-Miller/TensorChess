@@ -253,7 +253,6 @@ export function initBoard3D(container) {
       heatValues: mergedOptions.heatValues,
       showMeshHeat: mergedOptions.showMeshHeat,
       heightScale: mergedOptions.meshExtentScale ?? 1,
-      vectorState: mergedOptions.vectorState,
     });
     updateMoveRings({
       group: moveRingGroup,
@@ -653,7 +652,7 @@ function updateKingRing({ group, state, checkmatedColor }) {
   group.visible = true;
 }
 
-function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorState }) {
+function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale }) {
   if (!group) return;
   const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
   const active = Boolean(showMeshHeat && hasValues);
@@ -701,6 +700,7 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
 
   const geom = new THREE.PlaneGeometry(widthX, widthZ, meshHeatResolution, meshHeatResolution);
   const positions = geom.attributes.position;
+  const colors = new Float32Array(positions.count * 3);
   for (let i = 0; i < positions.count; i++) {
     const origX = positions.getX(i);
     const origZ = positions.getY(i); // plane uses Y for second axis
@@ -709,21 +709,33 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
     const xSample = u * 7;
     const ySample = v * 7;
     const heightVal = smoothSample(squareHeights, xSample, ySample);
+    const intensity = maxHeight > 0 ? clampUnit(heightVal / maxHeight) : 0;
+    const r = SAFE_COLOR.r + (HOT_COLOR.r - SAFE_COLOR.r) * intensity;
+    const g = SAFE_COLOR.g + (HOT_COLOR.g - SAFE_COLOR.g) * intensity;
+    const b = SAFE_COLOR.b + (HOT_COLOR.b - SAFE_COLOR.b) * intensity;
+    const colorIdx = i * 3;
+    colors[colorIdx] = r;
+    colors[colorIdx + 1] = g;
+    colors[colorIdx + 2] = b;
     const y = boardMetrics.surfaceY + baseOffset + heightVal;
     positions.setX(i, origX);
     positions.setZ(i, origZ);
     positions.setY(i, y);
   }
   positions.needsUpdate = true;
+  geom.setAttribute('color', new THREE.BufferAttribute(colors, 3));
 
-  const wire = new THREE.WireframeGeometry(geom);
-  meshHeatMesh = new THREE.LineSegments(
-    wire,
-    new THREE.LineBasicMaterial({
+  geom.computeVertexNormals();
+  meshHeatMesh = new THREE.Mesh(
+    geom,
+    new THREE.MeshPhongMaterial({
       color: 0xf8fafc,
       transparent: true,
-      opacity: 0.85,
+      opacity: 0.65,
+      vertexColors: true,
+      shininess: 50,
       depthWrite: false,
+      side: THREE.DoubleSide,
     }),
   );
   meshHeatMesh.position.set(centerX, 0, centerZ);
