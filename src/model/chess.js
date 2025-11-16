@@ -243,7 +243,8 @@ export function evaluateBoard(state, color = 'w') {
   const mobility = computeMobility(state, color) - computeMobility(state, opponent);
   const threat = computeThreat(state.board, color) - computeThreat(state.board, opponent);
   const material = computeMaterial(state.board, color) - computeMaterial(state.board, opponent);
-  return material + mobility - threat;
+  const totalMaterial = computeTotalMaterial(state.board, color) - computeTotalMaterial(state.board, opponent);
+  return material + mobility - threat + totalMaterial * 0.5;
 }
 
 function computeMobility(state, color) {
@@ -264,6 +265,15 @@ const PIECE_VALUE = {
   Q: 9,
   K: 100,
 };
+
+function computeTotalMaterial(board, color) {
+  let total = 0;
+  board.forEach((piece) => {
+    if (!piece || piece[0] !== color) return;
+    total += PIECE_VALUE[piece[1]] || 0;
+  });
+  return total;
+}
 
 function computeThreat(board, color) {
   const opponent = color === 'w' ? 'b' : 'w';

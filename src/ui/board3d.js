@@ -78,6 +78,10 @@ const heatGeometry = new THREE.CylinderGeometry(0.2, 0.5, 1, 4, 1, false);
 heatGeometry.computeVertexNormals();
 const heatMeshes = new Array(64).fill(null);
 const heatHeights = new Array(64).fill(0);
+const kingRingGeometry = new THREE.RingGeometry(0.3, 0.45, 28);
+const meshHeatResolution = 64;
+let meshHeatMesh = null;
+let meshHeatGrid = null;
 const EMPTY_HEAT_CELL = { threat: 0, support: 0 };
 const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   color: 0xffffff,
@@ -99,6 +103,7 @@ let currentBoardMesh = null;
 let simulationMesh = null;
 let simulationPieceKey = null;
 let simulationMeshLoading = null;
+let kingRingMesh = null;
 
 export function initBoard3D(container) {
   if (!container) return null;
@@ -151,6 +156,12 @@ export function initBoard3D(container) {
   const simulationGroup = new THREE.Group();
   simulationGroup.renderOrder = 30;
   scene.add(simulationGroup);
+  const kingRingGroup = new THREE.Group();
+  kingRingGroup.renderOrder = 32;
+  scene.add(kingRingGroup);
+  const meshHeatGroup = new THREE.Group();
+  meshHeatGroup.renderOrder = 18;
+  scene.add(meshHeatGroup);
   let travelMesh = null;
   const ringGroup = new THREE.Group();
   ringGroup.renderOrder = 30;
@@ -184,6 +195,8 @@ export function initBoard3D(container) {
       vectorScale: options.vectorScale ?? previousOptions.vectorScale ?? 0.5,
       vectorState: options.vectorState ?? boardStateToGame(board),
       simulationAnimation: options.simulationAnimation ?? null,
+      checkmatedColor: options.checkmatedColor ?? null,
+      showMeshHeat: options.showMeshHeat ?? previousOptions.showMeshHeat ?? false,
     };
     lastBoardState = board;
     lastBoardOptions = mergedOptions;
@@ -225,8 +238,17 @@ export function initBoard3D(container) {
     updateHeatVolumes({
       group: heatGroup,
       heatValues: mergedOptions.heatValues,
-      showHeat: mergedOptions.showHeat,
+      showHeat: mergedOptions.showHeat && !mergedOptions.showMeshHeat,
       heightScale: mergedOptions.heatHeightScale,
+      checkmatedColor: mergedOptions.checkmatedColor,
+      vectorState: mergedOptions.vectorState,
+    });
+    updateMeshHeat({
+      group: meshHeatGroup,
+      heatValues: mergedOptions.heatValues,
+      showMeshHeat: mergedOptions.showMeshHeat,
+      heightScale: mergedOptions.heatHeightScale,
+      vectorState: mergedOptions.vectorState,
     });
     updateMoveRings({
       group: moveRingGroup,
@@ -250,6 +272,11 @@ export function initBoard3D(container) {
       group: simulationGroup,
       animation: mergedOptions.simulationAnimation,
       token,
+    });
+    updateKingRing({
+      group: kingRingGroup,
+      state: mergedOptions.vectorState,
+      checkmatedColor: mergedOptions.checkmatedColor,
     });
   }
 
@@ -345,7 +372,7 @@ function centerMesh(mesh) {
   mesh.position.sub(center);
 }
 
-function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
+function updateHeatVolumes({ group, heatValues, showHeat, heightScale, checkmatedColor, vectorState }) {
   if (!group) return;
   const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
   let anyVisible = false;
@@ -359,6 +386,10 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
   const scaleX = boardMetrics.squareSizeX * HEAT_BASE_SCALE;
   const scaleZ = boardMetrics.squareSizeZ * HEAT_BASE_SCALE;
   const { maxThreat, maxSupport } = maxExtents;
+  const kingIdx =
+    checkmatedColor && vectorState
+      ? (vectorState.board ? vectorState.board : vectorState).findIndex((p) => p === `${checkmatedColor}K`)
+      : -1;
   for (let idx = 0; idx < 64; idx++) {
     const cell = hasValues ? heatValues[idx] ?? EMPTY_HEAT_CELL : EMPTY_HEAT_CELL;
     const threatIntensity = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
@@ -376,6 +407,9 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
       const topHeight = Math.max(centerHeight, shoulderHeight + unit * 0.05);
       const bottomHeight = Math.max(0, Math.min(centerHeight, shoulderHeight * 0.85));
       targetHeight = Math.max(minHeight * 0.7, topHeight - bottomHeight);
+      if (idx === kingIdx) {
+        targetHeight = Math.max(targetHeight, minHeight * 1.4);
+      }
     }
 
     const existing = heatMeshes[idx];
@@ -397,7 +431,13 @@ function updateHeatVolumes({ group, heatValues, showHeat, heightScale }) {
     mesh.visible = true;
     mesh.scale.set(scaleX, nextHeight, scaleZ);
     mesh.position.set(x, boardMetrics.surfaceY + baseOffset + nextHeight / 2, z);
-    applyHeatColor(mesh.material, threatIntensity, supportIntensity);
+    if (idx === kingIdx && checkmatedColor) {
+      mesh.material.color.set(0x000000);
+      mesh.material.opacity = 0.95;
+    } else {
+      applyHeatColor(mesh.material, threatIntensity, supportIntensity);
+      mesh.material.opacity = HEAT_MATERIAL_TEMPLATE.opacity;
+    }
     anyVisible = true;
   }
   group.visible = showHeat || anyVisible;
@@ -560,6 +600,130 @@ function createArrowMesh(start, end, sourceRadius, targetRadius, color) {
   arrowGroup.quaternion.copy(quaternion);
   arrowGroup.position.copy(start);
   return arrowGroup;
+}
+
+function updateKingRing({ group, state, checkmatedColor }) {
+  if (!group || !state || !checkmatedColor) {
+    group.visible = false;
+    return;
+  }
+  const workingState = state.board ? state : boardStateToGame(state);
+  const kingIdx = workingState.board.findIndex((p) => p === `${checkmatedColor}K`);
+  if (kingIdx === -1) {
+    group.visible = false;
+    return;
+  }
+  const size = Math.min(boardMetrics.squareSizeX, boardMetrics.squareSizeZ);
+  const outer = size * 0.62;
+  if (!kingRingMesh) {
+    const geom = kingRingGeometry.clone();
+    kingRingMesh = new THREE.Mesh(
+      geom,
+      new THREE.MeshBasicMaterial({
+        color: 0x000000,
+        transparent: true,
+        opacity: 0.95,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    const outline = new THREE.Mesh(
+      geom.clone(),
+      new THREE.MeshBasicMaterial({
+        color: 0xffffff,
+        transparent: true,
+        opacity: 0.45,
+        side: THREE.DoubleSide,
+        depthWrite: false,
+      }),
+    );
+    outline.scale.set(1.05, 1.05, 1);
+    kingRingMesh.add(outline);
+    kingRingMesh.rotation.x = -Math.PI / 2;
+    group.add(kingRingMesh);
+  }
+  kingRingMesh.scale.set(outer, outer, 1);
+  const pos = squarePosition3D(kingIdx);
+  kingRingMesh.position.set(pos.x, boardMetrics.surfaceY + 0.05, pos.z);
+  group.visible = true;
+}
+
+function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorState }) {
+  if (!group) return;
+  const hasValues = Array.isArray(heatValues) && heatValues.length === 64;
+  const active = Boolean(showMeshHeat && hasValues);
+  group.visible = active;
+  if (!active) {
+    if (meshHeatMesh) meshHeatMesh.visible = false;
+    if (meshHeatGrid) meshHeatGrid.visible = false;
+    return;
+  }
+  const squareSizeX = boardMetrics.squareSizeX;
+  const squareSizeZ = boardMetrics.squareSizeZ;
+  const widthX = 8 * squareSizeX;
+  const widthZ = 8 * squareSizeZ;
+  const centerX = boardMetrics.startX + squareSizeX * 3.5;
+  const centerZ = boardMetrics.startZ + squareSizeZ * 3.5;
+  const heightMultiplier = clampHeatHeightScale(heightScale ?? 1);
+  const unit = Math.min(squareSizeX, squareSizeZ);
+  const baseOffset = unit * HEAT_BASE_OFFSET;
+  const scaledHeight = unit * HEAT_HEIGHT_SCALE * heightMultiplier;
+
+  if (meshHeatMesh) {
+    group.remove(meshHeatMesh);
+    meshHeatMesh.geometry?.dispose?.();
+    meshHeatMesh = null;
+  }
+  if (meshHeatGrid) {
+    group.remove(meshHeatGrid);
+    meshHeatGrid.geometry?.dispose?.();
+    meshHeatGrid = null;
+  }
+
+  const geom = new THREE.PlaneGeometry(widthX, widthZ, meshHeatResolution, meshHeatResolution);
+  const positions = geom.attributes.position;
+  const { maxThreat, maxSupport } = getHeatExtents(heatValues);
+  for (let i = 0; i < positions.count; i++) {
+    const origX = positions.getX(i);
+    const origZ = positions.getY(i); // plane uses Y for second axis
+    const file = Math.min(7, Math.max(0, Math.floor(((origX + widthX / 2) / widthX) * 8)));
+    const rank = Math.min(7, Math.max(0, Math.floor(((origZ + widthZ / 2) / widthZ) * 8)));
+    const idx = rank * 8 + file;
+    const cell = heatValues[idx] ?? EMPTY_HEAT_CELL;
+    const threat = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
+    const support = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
+    const value = Math.max(threat, support);
+    const y = boardMetrics.surfaceY + baseOffset + value * scaledHeight;
+    positions.setX(i, origX);
+    positions.setZ(i, origZ);
+    positions.setY(i, y);
+  }
+  positions.needsUpdate = true;
+
+  const wire = new THREE.WireframeGeometry(geom);
+  meshHeatMesh = new THREE.LineSegments(
+    wire,
+    new THREE.LineBasicMaterial({
+      color: 0xf8fafc,
+      transparent: true,
+      opacity: 0.85,
+      depthWrite: false,
+    }),
+  );
+  meshHeatMesh.position.set(centerX, 0, centerZ);
+  group.add(meshHeatMesh);
+}
+
+function ensureMeshHeatGeometry() {
+  const geom = new THREE.PlaneGeometry(
+    8 * boardMetrics.squareSizeX,
+    8 * boardMetrics.squareSizeZ,
+    meshHeatResolution,
+    meshHeatResolution,
+  ).toNonIndexed();
+  const vertexCount = geom.attributes.position.count;
+  geom.setAttribute('color', new THREE.BufferAttribute(new Float32Array(vertexCount * 3), 3));
+  return geom;
 }
 
 function updateTravelStrip({ group, animation }) {
@@ -917,6 +1081,15 @@ function createFallbackBoard() {
     }
   }
   return group;
+}
+
+function heatColor(threatIntensity, supportIntensity) {
+  const t = clampUnit(threatIntensity);
+  const s = clampUnit(supportIntensity);
+  const r = clampUnit(HOT_COLOR.r * t);
+  const g = clampUnit(SAFE_COLOR.g * s);
+  const b = clampUnit((HOT_COLOR.b * t + SAFE_COLOR.b * s) * 0.5);
+  return { r, g, b };
 }
 
 function fitBoardToGrid(boardMesh) {

@@ -42,7 +42,7 @@
         display: grid;
         grid-template-columns: minmax(0, var(--board-split)) 18px minmax(0, calc(100% - var(--board-split)));
         column-gap: 1.2rem;
-        align-items: center;
+        align-items: stretch;
         justify-content: center;
         position: relative;
       }
@@ -54,6 +54,8 @@
         justify-content: center;
         align-items: center;
         min-width: 260px;
+        width: 100%;
+        height: 100%;
         position: relative;
       }
       .board-pane.hidden {
@@ -269,8 +271,9 @@
         display: block;
       }
       .board-column.single-3d #board3d-container {
-        aspect-ratio: 16 / 9;
-        height: auto;
+        aspect-ratio: unset;
+        width: 100%;
+        height: 100%;
       }
       .board-column.single-3d #board3d-pane {
         grid-column: 1;
@@ -577,6 +580,7 @@
               <label><input type="checkbox" id="layer-3d-heat" checked /> Heat Map</label>
               <label><input type="checkbox" id="layer-3d-vector" checked /> Move Vector Rings</label>
               <label><input type="checkbox" id="layer-3d-attack" /> Attack/Support Vectors</label>
+              <label><input type="checkbox" id="layer-3d-mesh-heat" /> Mesh Heatmap</label>
             </div>
           </div>
           <span>Boards:</span>
@@ -586,6 +590,10 @@
           <label class="material-select">
             Speed
             <input id="simulation-speed" type="range" min="1" max="600" value="30" />
+          </label>
+          <label class="material-select">
+            Search Depth
+            <input id="search-depth" type="number" min="1" max="6" step="1" value="2" />
           </label>
         </div>
       </div>

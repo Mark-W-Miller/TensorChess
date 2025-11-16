@@ -43,6 +43,7 @@ const layerMenu3d = document.getElementById('layer-menu-3d');
 const layer3dHeatToggle = document.getElementById('layer-3d-heat');
 const layer3dVectorToggle = document.getElementById('layer-3d-vector');
 const layer3dAttackToggle = document.getElementById('layer-3d-attack');
+const layer3dMeshHeatToggle = document.getElementById('layer-3d-mesh-heat');
 const boardHudEl = document.getElementById('board3d-hud');
 const boardHudToggle = document.getElementById('board3d-hud-toggle');
 const heatHeightSlider = document.getElementById('heat-height-slider');
@@ -55,6 +56,7 @@ const vectorScaleSlider = document.getElementById('vector-scale-slider');
 const vectorScaleValueEl = document.getElementById('vector-scale-value');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationSpeedSlider = document.getElementById('simulation-speed');
+const searchDepthInput = document.getElementById('search-depth');
 const sidebarColumnEl = document.getElementById('sidebar-column');
 const sidebarCloseBtn = document.getElementById('sidebar-close-btn');
 const sidebarOpenBtn = document.getElementById('sidebar-open-btn');
@@ -91,6 +93,7 @@ const THREAT_PIECE_VALUE = {
   Q: 9,
   K: 12,
 };
+const AGGRESSION_WEIGHT = 4;
 const PIECE_TYPES = ['P', 'N', 'B', 'R', 'Q', 'K'];
 const DEFAULT_PIECE_COUNTS = {
   w: { P: 8, N: 2, B: 2, R: 2, Q: 1, K: 1 },
@@ -184,11 +187,13 @@ const ui = {
   showHeat3d: persistedSettings.showHeat3d ?? true,
   showMoveRings3d: persistedSettings.showMoveRings3d ?? true,
   showAttack3d: persistedSettings.showAttack3d ?? false,
+  showMeshHeat3d: persistedSettings.showMeshHeat3d ?? false,
   heatHeightScale: clampHeatHeightScale(persistedSettings.heatHeightScale ?? 0.05),
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
   vectorScale: clampVectorScale(persistedSettings.vectorScale ?? 0.5),
   simulationSpeed: clampSimulationSpeed(persistedSettings.simulationSpeed ?? 30),
+  searchDepth: clampSearchDepth(persistedSettings.searchDepth ?? 2),
   show2dBoard: persistedSettings.show2dBoard ?? true,
   show3dBoard: persistedSettings.show3dBoard ?? true,
   sidebarOpen: persistedSettings.sidebarOpen ?? true,
@@ -346,6 +351,7 @@ function attachControls() {
   register3dLayerToggle(layer3dHeatToggle, 'showHeat3d');
   register3dLayerToggle(layer3dVectorToggle, 'showMoveRings3d');
   register3dLayerToggle(layer3dAttackToggle, 'showAttack3d');
+  register3dLayerToggle(layer3dMeshHeatToggle, 'showMeshHeat3d');
   updateBoardSplitDisplay();
 
   resetBtn.addEventListener('click', () => {
@@ -465,6 +471,14 @@ function attachControls() {
       ui.simulationSpeed = nextValue;
       persistSettings();
       updateSimulationControls();
+    });
+  }
+  if (searchDepthInput) {
+    searchDepthInput.addEventListener('input', (event) => {
+      const nextValue = clampSearchDepth(parseInt(event.target.value, 10));
+      if (!Number.isFinite(nextValue)) return;
+      ui.searchDepth = nextValue;
+      persistSettings();
     });
   }
   if (simulationToggleBtn) {
@@ -880,6 +894,8 @@ function render() {
       showAttackVectors: ui.showAttack3d,
       vectorScale: ui.vectorScale,
       vectorState,
+      showMeshHeat: ui.showMeshHeat3d,
+      checkmatedColor,
       simulationAnimation: simulation.animation
         ? {
             piece: simulation.animation.piece,
@@ -928,6 +944,8 @@ function persistSettings() {
     moveRingHeightScale: ui.moveRingHeightScale,
     vectorScale: ui.vectorScale,
     simulationSpeed: ui.simulationSpeed,
+    searchDepth: ui.searchDepth,
+    showMeshHeat3d: ui.showMeshHeat3d,
   };
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
@@ -961,6 +979,11 @@ function clampSimulationSpeed(value) {
   return Math.min(600, Math.max(1, value));
 }
 
+function clampSearchDepth(value) {
+  if (!Number.isFinite(value)) return 2;
+  return Math.min(6, Math.max(1, Math.round(value)));
+}
+
 function clampBoardSplit(value) {
   if (!Number.isFinite(value)) return 0.5;
   return Math.min(0.85, Math.max(0.15, value));
@@ -990,6 +1013,8 @@ function updateBoardVisibility() {
         showAttackVectors: ui.showAttack3d,
         vectorScale: ui.vectorScale,
         vectorState: game,
+        showMeshHeat: ui.showMeshHeat3d,
+        checkmatedColor: ui.checkmatedColor,
       });
     } else {
       board3d.hide();
@@ -1023,6 +1048,9 @@ function updateSidebarVisibility() {
 function updateSimulationControls() {
   if (simulationSpeedSlider) {
     simulationSpeedSlider.value = ui.simulationSpeed.toString();
+  }
+  if (searchDepthInput) {
+    searchDepthInput.value = ui.searchDepth.toString();
   }
   if (simulationToggleBtn) {
     simulationToggleBtn.textContent = simulation.active ? 'Stop Simulation' : 'Run Simulation';
@@ -1493,7 +1521,7 @@ function startAutoSequence() {
   drag.hoverTimerId = null;
   const opponentColor = playerColor === 'w' ? 'b' : 'w';
   if (!drag.previewBaseState || drag.previewBaseState.turn !== opponentColor) return;
-  const moves = collectAutoMoves(drag.previewBaseState, opponentColor);
+  const moves = collectAutoMoves(drag.previewBaseState, opponentColor, ui.searchDepth);
   if (!moves.length) return;
   drag.autoSequence = { moves, index: 0 };
   applyAutoMove();
@@ -1520,15 +1548,22 @@ function applyAutoMove() {
   }, AUTO_STEP_INTERVAL);
 }
 
-function collectAutoMoves(state, color) {
+function collectAutoMoves(state, color, depth = 1) {
   const colorState = { ...state, turn: color };
+  const remainingPieces = state.board.filter(Boolean).length;
+  let bonusDepth = 0;
+  if (remainingPieces <= 12) bonusDepth += 1;
+  if (remainingPieces <= 8) bonusDepth += 1;
+  if (remainingPieces <= 4) bonusDepth += 1;
+  const dynamicDepth = clampSearchDepth(depth + bonusDepth);
   const moves = [];
   state.board.forEach((piece, idx) => {
     if (!piece || piece[0] !== color) return;
     const legal = getLegalMoves(colorState, idx);
     legal.forEach((move) => {
       const nextState = simulateMove(colorState, move);
-      const evalScore = evaluateBoard(nextState, color);
+      const captureBonus = aggressiveCaptureScore(move);
+      const evalScore = evaluateLine(nextState, color, dynamicDepth - 1) + captureBonus;
       const pieceValue = AUTO_PIECE_VALUE[piece[1]] || 0;
       const mates = detectCheckmate(nextState) === (color === 'w' ? 'b' : 'w');
       moves.push({
@@ -1541,9 +1576,12 @@ function collectAutoMoves(state, color) {
   });
   if (!moves.length) return [];
 
-  // Sort by desirability: mates first, then eval score, then cheaper piece for expendability
+  // Sort by desirability: mates first, then taking higher-value pieces, then eval score, then cheaper piece for expendability
   moves.sort((a, b) => {
     if (a.mates !== b.mates) return a.mates ? -1 : 1;
+    const capA = capturePriority(a.move);
+    const capB = capturePriority(b.move);
+    if (capA !== capB) return capB - capA; // prefer taking higher value than we risk
     if (a.evalScore !== b.evalScore) return b.evalScore - a.evalScore;
     return a.pieceValue - b.pieceValue;
   });
@@ -1564,6 +1602,72 @@ function collectAutoMoves(state, color) {
   // Return ordered list with the selected move first, followed by the remaining best-first
   const remaining = moves.filter((m) => m !== chosen);
   return [chosen.move, ...remaining.map((m) => m.move)];
+}
+
+function evaluateLine(state, perspectiveColor, depth) {
+  // Depth is remaining plies beyond this state (state.turn to move)
+  if (depth <= 0) {
+    return evaluateBoard(state, perspectiveColor);
+  }
+  const turnColor = state.turn;
+  const moves = [];
+  state.board.forEach((piece, idx) => {
+    if (!piece || piece[0] !== turnColor) return;
+    const legal = getLegalMoves(state, idx);
+    legal.forEach((move) => {
+      moves.push({ move, from: idx, piece });
+    });
+  });
+  if (!moves.length) {
+    if (isCheckmate(state)) {
+      return turnColor === perspectiveColor ? -10000 : 10000;
+    }
+    if (isStalemate(state)) {
+      return 0;
+    }
+    return evaluateBoard(state, perspectiveColor);
+  }
+
+  // Order moves by shallow eval; search only the top half to limit branching
+  const scored = moves.map(({ move }) => {
+    const next = simulateMove(state, move);
+    const score = evaluateBoard(next, perspectiveColor) + aggressiveCaptureScore(move);
+    return { move, score, next };
+  });
+  scored.sort((a, b) => b.score - a.score);
+  const limit = Math.min(10, scored.length);
+  const slice = scored.slice(0, limit);
+
+  if (turnColor === perspectiveColor) {
+    // Maximize
+    let best = -Infinity;
+    slice.forEach(({ next }) => {
+      const val = evaluateLine(next, perspectiveColor, depth - 1);
+      if (val > best) best = val;
+    });
+    return best;
+  } else {
+    // Minimize
+    let best = Infinity;
+    slice.forEach(({ next }) => {
+      const val = evaluateLine(next, perspectiveColor, depth - 1);
+      if (val < best) best = val;
+    });
+    return best;
+  }
+}
+
+function aggressiveCaptureScore(move) {
+  if (!move || !move.captured) return 0;
+  const capturedVal = THREAT_PIECE_VALUE[move.captured[1]] || 0;
+  return capturedVal * AGGRESSION_WEIGHT;
+}
+
+function capturePriority(move) {
+  if (!move || !move.captured) return 0;
+  const capturedVal = THREAT_PIECE_VALUE[move.captured[1]] || 0;
+  const moverVal = THREAT_PIECE_VALUE[move.piece?.[1]] || 0;
+  return capturedVal - moverVal;
 }
 
 function cancelAutoSequence({ revertPreview = true, clearBase = false, clearHover = true } = {}) {
@@ -1620,7 +1724,7 @@ function stopSimulation() {
 
 function queueSimulationMove() {
   if (!simulation.active || simulation.animation) return;
-  const moves = collectAutoMoves(game, game.turn);
+  const moves = collectAutoMoves(game, game.turn, ui.searchDepth);
   if (!moves.length) {
     stopSimulation();
     return;
