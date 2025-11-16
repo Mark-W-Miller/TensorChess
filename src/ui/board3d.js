@@ -94,6 +94,10 @@ const HEAT_MATERIAL_TEMPLATE = new THREE.MeshPhysicalMaterial({
   depthWrite: false,
 });
 const HEAT_LERP = 0.2;
+function clampMeshExtent(value) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0.05, value));
+}
 const travelMaterial = createTravelMaterial();
 let boardMetrics = createBoardMetrics(8 * SQUARE_SIZE, 8 * SQUARE_SIZE, 0, 0, 0);
 let boardBounds = null;
@@ -197,6 +201,7 @@ export function initBoard3D(container) {
       simulationAnimation: options.simulationAnimation ?? null,
       checkmatedColor: options.checkmatedColor ?? null,
       showMeshHeat: options.showMeshHeat ?? previousOptions.showMeshHeat ?? false,
+      meshExtentScale: options.meshExtentScale ?? previousOptions.meshExtentScale ?? 1,
     };
     lastBoardState = board;
     lastBoardOptions = mergedOptions;
@@ -247,7 +252,7 @@ export function initBoard3D(container) {
       group: meshHeatGroup,
       heatValues: mergedOptions.heatValues,
       showMeshHeat: mergedOptions.showMeshHeat,
-      heightScale: mergedOptions.heatHeightScale,
+      heightScale: mergedOptions.meshExtentScale ?? 1,
       vectorState: mergedOptions.vectorState,
     });
     updateMoveRings({
@@ -664,10 +669,10 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
   const widthZ = 8 * squareSizeZ;
   const centerX = boardMetrics.startX + squareSizeX * 3.5;
   const centerZ = boardMetrics.startZ + squareSizeZ * 3.5;
-  const heightMultiplier = clampHeatHeightScale(heightScale ?? 1);
+  const extentScale = clampMeshExtent(heightScale ?? 1);
   const unit = Math.min(squareSizeX, squareSizeZ);
   const baseOffset = unit * HEAT_BASE_OFFSET;
-  const scaledHeight = unit * HEAT_HEIGHT_SCALE * heightMultiplier;
+  const maxHeight = Math.max(squareSizeX, squareSizeZ) * 2.5 * extentScale;
 
   if (meshHeatMesh) {
     group.remove(meshHeatMesh);
@@ -693,7 +698,7 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
     const threat = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
     const support = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
     const value = Math.max(threat, support);
-    const y = boardMetrics.surfaceY + baseOffset + value * scaledHeight;
+    const y = boardMetrics.surfaceY + baseOffset + value * maxHeight;
     positions.setX(i, origX);
     positions.setZ(i, origZ);
     positions.setY(i, y);

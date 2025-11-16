@@ -54,6 +54,8 @@ const vectorOffsetSlider = document.getElementById('vector-offset-slider');
 const vectorOffsetValueEl = document.getElementById('vector-offset-value');
 const vectorScaleSlider = document.getElementById('vector-scale-slider');
 const vectorScaleValueEl = document.getElementById('vector-scale-value');
+const meshExtentSlider = document.getElementById('mesh-extent-slider');
+const meshExtentValueEl = document.getElementById('mesh-extent-value');
 const simulationToggleBtn = document.getElementById('simulation-toggle-btn');
 const simulationSpeedSlider = document.getElementById('simulation-speed');
 const searchDepthInput = document.getElementById('search-depth');
@@ -192,6 +194,7 @@ const ui = {
   vectorHeightScale: clampVectorHeightScale(persistedSettings.vectorHeightScale ?? 0.5),
   moveRingHeightScale: clampMoveRingHeightScale(persistedSettings.moveRingHeightScale ?? 0.2),
   vectorScale: clampVectorScale(persistedSettings.vectorScale ?? 0.5),
+  meshExtentScale: clampMeshExtent(persistedSettings.meshExtentScale ?? 1),
   simulationSpeed: clampSimulationSpeed(persistedSettings.simulationSpeed ?? 30),
   searchDepth: clampSearchDepth(persistedSettings.searchDepth ?? 2),
   show2dBoard: persistedSettings.show2dBoard ?? true,
@@ -300,27 +303,38 @@ function attachControls() {
       vectorScaleValueEl.textContent = `${Math.round(ui.vectorScale * 100)}%`;
     }
   };
+  const updateMeshExtentControls = () => {
+    if (meshExtentSlider) {
+      meshExtentSlider.value = ui.meshExtentScale.toFixed(2);
+    }
+    if (meshExtentValueEl) {
+      meshExtentValueEl.textContent = `${Math.round(ui.meshExtentScale * 100)}%`;
+    }
+  };
   updateHeatHeightControls();
   updateVectorHeightControls();
   updateVectorOffsetControls();
   updateVectorScaleControls();
+  updateMeshExtentControls();
   updateSimulationControls();
   const refresh3DView = () => {
     if (board3d && ui.show3dBoard) {
       board3d.updateBoard(game.board, {
         heatValues,
         showHeat: ui.showHeat3d,
-      heatHeightScale: ui.heatHeightScale,
-      vectorHeightScale: ui.vectorHeightScale,
-      moveRingHeightScale: ui.moveRingHeightScale,
-      showMoveRings: ui.showMoveRings3d,
-      showAttackVectors: ui.showAttack3d,
-      vectorScale: ui.vectorScale,
-      vectorState: drag.active ? drag.previewState ?? game : game,
-      simulationAnimation: simulation.animation
-        ? {
-            piece: simulation.animation.piece,
-            fromIdx: simulation.animation.move.from,
+        heatHeightScale: ui.heatHeightScale,
+        vectorHeightScale: ui.vectorHeightScale,
+        moveRingHeightScale: ui.moveRingHeightScale,
+        showMoveRings: ui.showMoveRings3d,
+        showAttackVectors: ui.showAttack3d,
+        vectorScale: ui.vectorScale,
+        showMeshHeat: ui.showMeshHeat3d,
+        meshExtentScale: ui.meshExtentScale,
+        vectorState: drag.active ? drag.previewState ?? game : game,
+        simulationAnimation: simulation.animation
+          ? {
+              piece: simulation.animation.piece,
+              fromIdx: simulation.animation.move.from,
               toIdx: simulation.animation.move.to,
               progress: simulation.animation.progress,
             }
@@ -460,6 +474,16 @@ function attachControls() {
       if (!Number.isFinite(nextValue)) return;
       ui.moveRingHeightScale = nextValue;
       updateVectorOffsetControls();
+      persistSettings();
+      refresh3DView();
+    });
+  }
+  if (meshExtentSlider) {
+    meshExtentSlider.addEventListener('input', (event) => {
+      const nextValue = clampMeshExtent(parseFloat(event.target.value));
+      if (!Number.isFinite(nextValue)) return;
+      ui.meshExtentScale = nextValue;
+      updateMeshExtentControls();
       persistSettings();
       refresh3DView();
     });
@@ -941,12 +965,13 @@ function persistSettings() {
     sidebarOpen: ui.sidebarOpen,
     boardSplit: ui.boardSplit,
     vectorHeightScale: ui.vectorHeightScale,
-    moveRingHeightScale: ui.moveRingHeightScale,
-    vectorScale: ui.vectorScale,
-    simulationSpeed: ui.simulationSpeed,
-    searchDepth: ui.searchDepth,
-    showMeshHeat3d: ui.showMeshHeat3d,
-  };
+  moveRingHeightScale: ui.moveRingHeightScale,
+  vectorScale: ui.vectorScale,
+  meshExtentScale: ui.meshExtentScale,
+  simulationSpeed: ui.simulationSpeed,
+  searchDepth: ui.searchDepth,
+  showMeshHeat3d: ui.showMeshHeat3d,
+};
   try {
     window.localStorage.setItem(SETTINGS_KEY, JSON.stringify(payload));
   } catch (err) {
@@ -972,6 +997,11 @@ function clampMoveRingHeightScale(value) {
 function clampVectorScale(value) {
   if (!Number.isFinite(value)) return 1;
   return Math.min(2, Math.max(0.2, value));
+}
+
+function clampMeshExtent(value) {
+  if (!Number.isFinite(value)) return 1;
+  return Math.min(1, Math.max(0.05, value));
 }
 
 function clampSimulationSpeed(value) {
@@ -1014,6 +1044,7 @@ function updateBoardVisibility() {
         vectorScale: ui.vectorScale,
         vectorState: game,
         showMeshHeat: ui.showMeshHeat3d,
+        meshExtentScale: ui.meshExtentScale,
         checkmatedColor: ui.checkmatedColor,
       });
     } else {
