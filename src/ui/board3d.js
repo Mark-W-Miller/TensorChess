@@ -673,6 +673,20 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
   const unit = Math.min(squareSizeX, squareSizeZ);
   const baseOffset = unit * HEAT_BASE_OFFSET;
   const maxHeight = Math.max(squareSizeX, squareSizeZ) * 2.5 * extentScale;
+  const { maxThreat, maxSupport } = getHeatExtents(heatValues);
+
+  // Precompute square heights (8x8)
+  const squareHeights = new Array(8).fill(0).map(() => new Array(8).fill(0));
+  for (let rank = 0; rank < 8; rank++) {
+    for (let file = 0; file < 8; file++) {
+      const idx = rank * 8 + file;
+      const cell = heatValues[idx] ?? EMPTY_HEAT_CELL;
+      const threat = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
+      const support = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
+      const value = Math.max(threat, support);
+      squareHeights[rank][file] = value * maxHeight;
+    }
+  }
 
   if (meshHeatMesh) {
     group.remove(meshHeatMesh);
@@ -687,18 +701,15 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
 
   const geom = new THREE.PlaneGeometry(widthX, widthZ, meshHeatResolution, meshHeatResolution);
   const positions = geom.attributes.position;
-  const { maxThreat, maxSupport } = getHeatExtents(heatValues);
   for (let i = 0; i < positions.count; i++) {
     const origX = positions.getX(i);
     const origZ = positions.getY(i); // plane uses Y for second axis
-    const file = Math.min(7, Math.max(0, Math.floor(((origX + widthX / 2) / widthX) * 8)));
-    const rank = Math.min(7, Math.max(0, Math.floor(((origZ + widthZ / 2) / widthZ) * 8)));
-    const idx = rank * 8 + file;
-    const cell = heatValues[idx] ?? EMPTY_HEAT_CELL;
-    const threat = maxThreat > 0 ? clampUnit((cell.threat ?? 0) / maxThreat) : 0;
-    const support = maxSupport > 0 ? clampUnit((cell.support ?? 0) / maxSupport) : 0;
-    const value = Math.max(threat, support);
-    const y = boardMetrics.surfaceY + baseOffset + value * maxHeight;
+    const u = clampUnit((origX + widthX / 2) / widthX); // 0..1
+    const v = clampUnit((origZ + widthZ / 2) / widthZ); // 0..1
+    const xSample = u * 7;
+    const ySample = v * 7;
+    const heightVal = smoothSample(squareHeights, xSample, ySample);
+    const y = boardMetrics.surfaceY + baseOffset + heightVal;
     positions.setX(i, origX);
     positions.setZ(i, origZ);
     positions.setY(i, y);
@@ -717,6 +728,27 @@ function updateMeshHeat({ group, heatValues, showMeshHeat, heightScale, vectorSt
   );
   meshHeatMesh.position.set(centerX, 0, centerZ);
   group.add(meshHeatMesh);
+}
+
+function smoothSample(grid, x, y) {
+  const x0 = Math.floor(x);
+  const y0 = Math.floor(y);
+  const x1 = Math.min(7, x0 + 1);
+  const y1 = Math.min(7, y0 + 1);
+  const tx = smoothStep(x - x0);
+  const ty = smoothStep(y - y0);
+  const h00 = grid[y0][x0];
+  const h10 = grid[y0][x1];
+  const h01 = grid[y1][x0];
+  const h11 = grid[y1][x1];
+  const hx0 = h00 + (h10 - h00) * tx;
+  const hx1 = h01 + (h11 - h01) * tx;
+  return hx0 + (hx1 - hx0) * ty;
+}
+
+function smoothStep(t) {
+  const clamped = clampUnit(t);
+  return clamped * clamped * (3 - 2 * clamped);
 }
 
 function ensureMeshHeatGeometry() {
